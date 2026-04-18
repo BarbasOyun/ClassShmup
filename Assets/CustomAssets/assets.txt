@@ -1,0 +1,6 @@
+-Player = https://foozlecc.itch.io/void-main-ship
+-Player Shoot = https://freesound.org/people/alphatrooper18/sounds/362421/
+-Enemies = https://foozlecc.itch.io/void-fleet-pack-1
+-Enemies Explosion = https://opengameart.org/content/explosion-8
+-Background = https://screamingbrainstudios.itch.io/seamless-space-backgrounds
+-Music = https://alkakrab.itch.io/free-sci-fi-music-2
