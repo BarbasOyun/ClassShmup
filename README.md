@@ -7,6 +7,9 @@
 -[Unity Manual](https://docs.unity3d.com/Manual/index.html)<br>
 -[C# Naming Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/identifier-names)<br>
 -[YT : 3 Laws of writing readable code](https://www.youtube.com/watch?v=-AzSRHiV9Cc)<br>
+State of AI Games :<br>
+-[Racing Game](https://www.reddit.com/r/aigamedev/comments/1smm7hl/i_had_claude_code_build_me_a_3d_formula1_racing/)<br>
+-[Portal Game](https://www.reddit.com/r/aigamedev/comments/1sspoe4/this_portal_clone_is_created_with_10_prompts/)
 
 ### Assets Used
 

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -19,33 +18,23 @@ public class Player : MonoBehaviour
 
     [Header("MOVEMENTS")]
     public float speed = 0.1f;
-    public Vector3 velocityDirection; // Normalized
+    public Vector3 moveInput;
     public GameObject[] mapLimits;
-    public Camera mainCamera;
+
+    float horizontalLimit;
+    float verticalLimit;
 
     [Header("SHOOT")]
     public GameObject shootPos;
-    public GameObject laser;
     public float shootDelay = 0.25f;
     private float lastShoot;
-    public float laserSpeed = 10;
     //List<GameObject> lasers;
-
-    // ECS -> ECS System
-    // TODO : Object Pooling
-    int maxLaser = 1000;
-    int activeCount = 0;
-
-    int[] versions;
-    GameObject[] laserGameObjects;
 
     void Awake()
     {
-        versions = new int[maxLaser];
-        laserGameObjects = new GameObject[maxLaser];
+        UpdateMovementLimits();
     }
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
 
@@ -55,10 +44,8 @@ public class Player : MonoBehaviour
     void FixedUpdate()
     {
         Movements();
-        LaserMovements();
     }
 
-    // Update is called once per frame -> Inputs
     void Update()
     {
         // Movements();
@@ -74,13 +61,13 @@ public class Player : MonoBehaviour
         {
             // print("Forward");
             // transform.position += gameObject.transform.up * speed;
-            velocityDirection = new Vector3(velocityDirection.x, 1);
+            moveInput = new Vector3(moveInput.x, 1);
         }
         else if (Keyboard.current.sKey.isPressed)
         {
             // print("Backward");
             // transform.position -= gameObject.transform.up * speed;
-            velocityDirection = new Vector3(velocityDirection.x, -1);
+            moveInput = new Vector3(moveInput.x, -1);
         }
 
         if (Keyboard.current.aKey.isPressed)
@@ -88,27 +75,30 @@ public class Player : MonoBehaviour
             // print("Left");
             // transform.position -= gameObject.transform.right * speed;
             // transform.position += Vector3.Cross(gameObject.transform.forward, Vector3.up) * speed;
-            velocityDirection = new Vector3(-1, velocityDirection.y);
+            moveInput = new Vector3(-1, moveInput.y);
         }
         else if (Keyboard.current.dKey.isPressed)
         {
             // print("Right");
             // transform.position += gameObject.transform.right * speed;
             // transform.position -= Vector3.Cross(gameObject.transform.forward, Vector3.up) * speed;
-            velocityDirection = new Vector3(1, velocityDirection.y);
+            moveInput = new Vector3(1, moveInput.y);
         }
     }
 
     void Movements()
     {
+        // Normalize Velocity
+        if (moveInput.magnitude > 1)
+        {
+            moveInput.Normalize();
+        }
+
         // Apply Velocity
-        transform.position += velocityDirection * speed; // * Time.deltaTime;
-        velocityDirection = Vector3.zero;
+        transform.position += moveInput * speed; // * Time.deltaTime;
+        moveInput = Vector3.zero;
 
         // Map Limits -> Camera
-        float verticalLimit = mainCamera.orthographicSize - spriteRenderer.bounds.size.y / 2;
-        float horizontalLimit = mainCamera.orthographicSize * Screen.width / Screen.height - spriteRenderer.bounds.size.x / 2;
-
         float clampX = Math.Clamp(transform.position.x, -horizontalLimit, horizontalLimit);
         float clampY = Math.Clamp(transform.position.y, -verticalLimit, verticalLimit);
         transform.position = new Vector3(clampX, clampY, transform.position.z);
@@ -119,13 +109,24 @@ public class Player : MonoBehaviour
         // transform.position = new Vector3(clampX, clampY, transform.position.z);
     }
 
+    // When Changing Camera orthographicSize or Player SpriteSize
+    void UpdateMovementLimits()
+    {
+        verticalLimit = Camera.main.orthographicSize - spriteRenderer.bounds.size.y / 2;
+        horizontalLimit = Camera.main.orthographicSize * Screen.width / Screen.height - spriteRenderer.bounds.size.x / 2;
+    }
+
     void Shoot()
     {
         if ((Keyboard.current.spaceKey.isPressed || Mouse.current.leftButton.isPressed) && Time.fixedTime > lastShoot + shootDelay)
         {
-            GameObject newLaser = SpawnLaser();
-            newLaser.transform.position = shootPos.transform.position;
-            newLaser.transform.rotation = transform.rotation;
+            GameObject spawnedLaser = ProjectileManager.instance.SpawnProjectile();
+
+            if (spawnedLaser)
+            {
+                spawnedLaser.transform.position = shootPos.transform.position;
+                spawnedLaser.transform.rotation = transform.rotation;
+            }
 
             lastShoot = Time.fixedTime;
 
@@ -137,62 +138,6 @@ public class Player : MonoBehaviour
             // {
             // RemoveLaser();
             // }));
-        }
-    }
-
-    GameObject SpawnLaser()
-    {
-        GameObject newLaser = Instantiate(laser);
-
-        laserGameObjects[activeCount] = newLaser;
-        versions[activeCount] += 1;
-
-        if (newLaser.TryGetComponent(out Bullet entity))
-        {
-            entity.index = activeCount;
-            entity.version = versions[activeCount] + 1;
-
-            StartCoroutine(RunAfterDelay(2, () =>
-            {
-                RemoveLaser(entity.index);
-            }));
-        }
-
-        activeCount++;
-
-        return newLaser;
-    }
-
-    public void RemoveLaser(int indexToRemove)
-    {
-        Destroy(laserGameObjects[indexToRemove]);
-
-        int lastIndex = activeCount - 1;
-
-        if (indexToRemove != lastIndex)
-        {
-            GameObject movedEnemy = laserGameObjects[lastIndex];
-
-            // Move Data
-            laserGameObjects[indexToRemove] = movedEnemy;
-
-            // Update GameObject Index
-            if (movedEnemy.TryGetComponent(out EnemyEntity entity))
-            {
-                entity.index = indexToRemove;
-            }
-        }
-
-        // Update Version
-        versions[indexToRemove]++;
-        activeCount--;
-    }
-
-    void LaserMovements()
-    {
-        foreach (GameObject laser in laserGameObjects)
-        {
-            laser.transform.position += laser.transform.up * laserSpeed; // * Time.deltaTime;
         }
     }
 

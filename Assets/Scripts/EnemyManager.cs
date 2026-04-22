@@ -6,14 +6,13 @@ public class EnemyManager : MonoBehaviour
     // TODO : Use Service Locator
     public static EnemyManager instance;
 
-    // ECS
     // TODO : Object Pooling
+    // ECS
     int maxEnemies = 1000;
     int activeCount = 0;
 
     int[] versions;
     GameObject[] enemyGameObjects;
-    // EnemyEntity[]
     int[] enemyHp;
 
     [Header("SETTINGS")]
@@ -45,7 +44,6 @@ public class EnemyManager : MonoBehaviour
         lookDirection = Quaternion.Euler(0, 0, angle);
     }
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         InvokeRepeating(nameof(SpawnEnemies), 2.0f, 1f);
@@ -56,7 +54,6 @@ public class EnemyManager : MonoBehaviour
         Enemy01Movements();
     }
 
-    // Update is called once per frame
     void Update()
     {
 
@@ -85,7 +82,7 @@ public class EnemyManager : MonoBehaviour
         if (newEnemy.TryGetComponent(out EnemyEntity entity))
         {
             entity.index = activeCount;
-            entity.version = versions[activeCount] + 1;
+            entity.version = versions[activeCount];
 
             StartCoroutine(Player.RunAfterDelay(5, () =>
             {

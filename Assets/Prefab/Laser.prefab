@@ -10,7 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 8608692948638182935}
   - component: {fileID: 1246449059731855257}
-  - component: {fileID: 7882506045723987793}
   - component: {fileID: 5375734974763606858}
   - component: {fileID: 8764094911454408712}
   m_Layer: 0
@@ -94,28 +93,6 @@ SpriteRenderer:
   m_SpriteTileMode: 0
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
---- !u!95 &7882506045723987793
-Animator:
-  serializedVersion: 7
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5160333836033800714}
-  m_Enabled: 0
-  m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 9100000, guid: 5742ee8cca763774f8a23d4369f3c6c5, type: 2}
-  m_CullingMode: 0
-  m_UpdateMode: 0
-  m_ApplyRootMotion: 0
-  m_LinearVelocityBlending: 0
-  m_StabilizeFeet: 0
-  m_AnimatePhysics: 0
-  m_WarningMessage: 
-  m_HasTransformHierarchy: 1
-  m_AllowConstantClipSamplingOptimization: 1
-  m_KeepAnimatorStateOnDisable: 0
-  m_WriteDefaultValuesOnDisable: 0
 --- !u!114 &5375734974763606858
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -128,7 +105,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 262040c062ad98745ad77c5692822fab, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Bullet
-  damage: 10
+  index: 0
+  version: 0
 --- !u!61 &8764094911454408712
 BoxCollider2D:
   m_ObjectHideFlags: 0
