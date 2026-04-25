@@ -11,7 +11,7 @@ public class ProjectileManager : MonoBehaviour
     public float laserSpeed = 0.3f;
 
     // Laser ECS
-    int maxProjectile = 1000;
+    int maxProjectile = 500;
     int activeCount = 0;
 
     int[] versions;
@@ -115,7 +115,7 @@ public class ProjectileManager : MonoBehaviour
         RemoveProjectile(laserIndex);
     }
 
-    bool IsOutOfBond(Vector3 pos, float horizontalLimit, float verticalLimit)
+    public bool IsOutOfBond(Vector3 pos, float horizontalLimit, float verticalLimit)
     {
         return pos.x > horizontalLimit || pos.x < -horizontalLimit || pos.y > verticalLimit || pos.y < -verticalLimit;
     }
