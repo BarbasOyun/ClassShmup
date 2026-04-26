@@ -120,13 +120,17 @@ public class Player : MonoBehaviour
     {
         if ((Keyboard.current.spaceKey.isPressed || Mouse.current.leftButton.isPressed) && Time.fixedTime > lastShoot + shootDelay)
         {
-            GameObject spawnedLaser = ProjectileManager.instance.SpawnProjectile();
+            GameObject spawnedLaser1 = ProjectileManager.instance.SpawnProjectile(transform.up);
+            GameObject spawnedLaser2 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (0.2f * Math.PI)));
+            GameObject spawnedLaser3 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (0.325f * Math.PI)));
+            GameObject spawnedLaser4 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (-0.2f * Math.PI)));
+            GameObject spawnedLaser5 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (-0.325f * Math.PI)));
 
-            if (spawnedLaser)
-            {
-                spawnedLaser.transform.position = shootPos.transform.position;
-                spawnedLaser.transform.rotation = transform.rotation;
-            }
+            SetLaserTransform(spawnedLaser1);
+            SetLaserTransform(spawnedLaser2);
+            SetLaserTransform(spawnedLaser3);
+            SetLaserTransform(spawnedLaser4);
+            SetLaserTransform(spawnedLaser5);
 
             lastShoot = Time.fixedTime;
 
@@ -141,18 +145,42 @@ public class Player : MonoBehaviour
         }
     }
 
+    void SetLaserTransform(GameObject laser)
+    {
+        if (!laser) return;
+
+        laser.transform.position = shootPos.transform.position;
+        // laser.transform.rotation = transform.rotation;
+    }
+
     public void TakeDamage(int damage)
     {
         hp -= damage;
         hpSlider.value = hp / maxHp;
     }
 
+    // TODO : Move to Gears
     #region UTILS
 
     public static IEnumerator RunAfterDelay(float delay, Action action)
     {
         yield return new WaitForSeconds(delay);
         action();
+    }
+
+    public Vector2 RotateVector(Vector2 vector2, float angleRadiant)
+    {
+        float cosValue = (float)Math.Cos(angleRadiant);
+        float sinValue = (float)Math.Sin(angleRadiant);
+
+        return new Vector2(
+        vector2.x * cosValue - vector2.y * sinValue,
+        vector2.x * sinValue + vector2.y * cosValue);
+    }
+
+    public static Quaternion LookRotation2D(Vector2 direction) {
+        float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
+        return Quaternion.Euler(0, 0, angle);
     }
 
     #endregion

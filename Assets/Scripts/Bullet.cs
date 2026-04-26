@@ -7,7 +7,7 @@ public class Bullet : Entity
         if (other.TryGetComponent<EnemyEntity>(out var entity))
         {
             // print("Bullet Collision");
-            ProjectileManager.instance.LaserHit(index, entity.index, entity.version);
+            ProjectileManager.instance.LaserHit(index, version, entity.index, entity.version);
         }
     }
 }

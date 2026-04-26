@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class EnemyManager : MonoBehaviour
@@ -9,6 +10,7 @@ public class EnemyManager : MonoBehaviour
 
     [Header("ENEMY SPAWNER")]
     public GameObject[] spawnLocations; // 3
+    public float spawnDelta = 1f;
     public int minEnemies = 2;
     public int enemiesRange = 2;
     public Vector2 enemiesDirection;
@@ -18,14 +20,15 @@ public class EnemyManager : MonoBehaviour
     // [Header("ECS")]
     struct EntityType
     {
-        public EntityType(EnemyType type, int maxEntities, GameObject prefab, EntityUpdateLogic updateAction)
+        public EntityType(EnemyType type, int maxEntities, GameObject prefab, UnitData unitData, UnitLogic unitLogic)
         {
             this.type = type;
             startIndex = 0;
             this.maxEntities = maxEntities;
             activeCount = 0;
             this.prefab = prefab;
-            this.updateAction = updateAction;
+            this.unitData = unitData;
+            this.unitLogic = unitLogic;
         }
 
         public EnemyType type;
@@ -33,36 +36,38 @@ public class EnemyManager : MonoBehaviour
         public int maxEntities;
         public int activeCount;
         public GameObject prefab;
-        public EntityUpdateLogic updateAction;
-        // Type Logic Definition
-        // Type Data Definition -> Create runtime arrays based on it
+        public UnitData unitData;
+        public UnitLogic unitLogic;
 
         public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
     }
 
     EntityType[] entityTypes;
 
-    int maxEnemies = 500;
-    int activeCount = 0;
-
+    int maxEnemies;
     int[] versions;
     GameObject[] enemyGameObjects;
     int[] enemyHps;
     // int[] enemyShield;
 
-    // DATA
+    // DATA SOURCE
     // TODO : Game Engine Agnostic = Move to file, Unity = ScriptableObject
     [Header("ENEMY - Scout")]
     public GameObject scoutPrefab;
     public int scoutHp = 10;
+    public int scoutDamage = 10;
     public float scoutSpeed = 0.1f;
-    public float scoutDamage = 10;
 
     [Header("ENEMY - Frigate")]
     public GameObject frigatePrefab;
     public int frigateHp = 30;
+    public int frigateDamage = 20;
     public float frigateSpeed = 0.05f;
-    public float frigateDamage = 20;
+    public float shield = 10;
+
+    // LOGIC
+    public EntityUpdateLogic straightMovement = (entityBody, speed) => entityBody.transform.position += entityBody.transform.up * speed;
+    public EntityUpdateLogic oscilatingMovement = (entityBody, speed) => entityBody.transform.position += (entityBody.transform.right * (float) Math.Sin(Time.time) + entityBody.transform.up) * speed;
 
     void Awake()
     {
@@ -80,12 +85,12 @@ public class EnemyManager : MonoBehaviour
 
     void Start()
     {
-        InvokeRepeating(nameof(SpawnEnemies), 2.0f, 1f);
+        InvokeRepeating(nameof(SpawnEnemies), 1.0f, spawnDelta);
     }
 
     void FixedUpdate()
     {
-        EnemyMovements();
+        EntitiesUpdateLogic();
     }
 
     void Update()
@@ -96,43 +101,35 @@ public class EnemyManager : MonoBehaviour
     // ENEMY SPAWNER
     void SpawnEnemies()
     {
-        if (activeCount >= maxEnemies)
-        {
-            Debug.LogWarning("Max Enemies");
-            return;
-        }
-
-        int enemiesNbrRoll = Random.Range(minEnemies, minEnemies + enemiesRange);
+        // Spawn Scout
+        int enemiesNbrRoll = UnityEngine.Random.Range(minEnemies, minEnemies + enemiesRange);
 
         for (int i = 0; i < enemiesNbrRoll; i++)
         {
             GameObject spawnedEnemy = SpawnEnemyType(EnemyType.Scout);
+
+            if (!spawnedEnemy) return;
+
             SetEnemyTransform(spawnedEnemy);
         }
 
+        // Spawn Frigate
         SetEnemyTransform(SpawnEnemyType(EnemyType.Frigate));
     }
 
     void SetEnemyTransform(GameObject enemy)
     {
         enemy.transform.rotation = lookDirection;
-        int locationOffset = (int)Random.Range(spawnLocations[1].transform.position.x, spawnLocations[2].transform.position.x);
+        int locationOffset = (int)UnityEngine.Random.Range(spawnLocations[1].transform.position.x, spawnLocations[2].transform.position.x);
         enemy.transform.position = spawnLocations[0].transform.position + new Vector3(locationOffset, 0);
     }
 
     // ECS
     void InitECS()
     {
-        // New ECS: Sub Region Array
-        EntityUpdateLogic scoutMovements = (entityBody) => { entityBody.transform.position += entityBody.transform.up * scoutSpeed; };
-        EntityUpdateLogic frigateMovements = (entityBody) => { entityBody.transform.position += entityBody.transform.up * frigateSpeed; };
+        InitEntityType();
 
-        entityTypes = new EntityType[] {
-            new EntityType(EnemyType.Scout, 250, scoutPrefab, scoutMovements),
-            new EntityType(EnemyType.Frigate, 250, frigatePrefab, frigateMovements)
-            };
-
-        // Create Gameobjects Array
+        // Create Dynamic Arrays
         int totalEntity = 0;
 
         foreach (EntityType entityType in entityTypes)
@@ -145,6 +142,7 @@ public class EnemyManager : MonoBehaviour
         enemyHps = new int[totalEntity];
         maxEnemies = totalEntity;
 
+        // Instantiate/Setup GameObjects
         int totalEntityCount = 0;
 
         for (int i = 0; i < entityTypes.Length; i++)
@@ -154,17 +152,35 @@ public class EnemyManager : MonoBehaviour
                 GameObject spawnedPrefab = Instantiate(entityTypes[i].prefab, transform);
                 spawnedPrefab.SetActive(false);
 
+                int index = totalEntityCount + j;
+
                 if (spawnedPrefab.TryGetComponent(out Entity entity))
                 {
-                    entity.index = j;
+                    entity.index = index;
                 }
 
-                enemyGameObjects[totalEntityCount + j] = spawnedPrefab;
+                enemyGameObjects[index] = spawnedPrefab;
             }
 
             entityTypes[i].startIndex = totalEntityCount;
             totalEntityCount += entityTypes[i].maxEntities;
         }
+    }
+
+    void InitEntityType()
+    {
+        // Scout
+        UnitData scoutData = new UnitData( scoutHp, scoutDamage, scoutSpeed);
+        UnitLogic scoutLogic = new UnitLogic(straightMovement);
+
+        // Frigate
+        UnitData frigateData = new UnitData(frigateHp, frigateDamage, frigateSpeed, new ShieldData());
+        UnitLogic frigateLogic = new UnitLogic(oscilatingMovement);
+
+        entityTypes = new EntityType[] {
+            new EntityType(EnemyType.Scout, 250, scoutPrefab, scoutData, scoutLogic),
+            new EntityType(EnemyType.Frigate, 250, frigatePrefab, frigateData, frigateLogic)
+            };
     }
 
     ref EntityType FindEntityType(EnemyType type)
@@ -229,7 +245,7 @@ public class EnemyManager : MonoBehaviour
         spawnedEnemy.SetActive(true);
 
         versions[spawnIndex]++;
-        enemyHps[spawnIndex] = scoutHp;
+        enemyHps[spawnIndex] = entityType.unitData.hp;
 
         if (spawnedEnemy.TryGetComponent(out Entity entity))
         {
@@ -238,6 +254,8 @@ public class EnemyManager : MonoBehaviour
         }
 
         entityType.activeCount++;
+
+        // Debug.Log($"Spawned {entityType.type} HP = {enemyHps[spawnIndex]}");
 
         return spawnedEnemy;
     }
@@ -251,17 +269,21 @@ public class EnemyManager : MonoBehaviour
 
         // Update Version
         versions[indexToRemove]++;
+        entityType.activeCount--;
 
-        int lastEntityIndex = entityType.startIndex + entityType.activeCount - 1;
+        int lastEntityIndex = entityType.startIndex + entityType.activeCount;
+
+        // Debug.Log($"REMOVE {entityType.type} Entity at Index = {indexToRemove}, REPLACE Last Index = {lastEntityIndex}");
 
         if (indexToRemove != lastEntityIndex)
         {
-            // Last Object -> Removed Index
+            // Swap GameObjects
             GameObject movedEnemy = enemyGameObjects[lastEntityIndex];
-
-            // Swap
-            enemyGameObjects[indexToRemove] = movedEnemy;
             enemyGameObjects[lastEntityIndex] = removedEnemy;
+
+            // Move Data : Last Object -> Removed Index
+            enemyHps[indexToRemove] = enemyHps[lastEntityIndex];
+            enemyGameObjects[indexToRemove] = movedEnemy;
 
             // Update Entity
             if (movedEnemy.TryGetComponent(out Entity entity))
@@ -270,32 +292,30 @@ public class EnemyManager : MonoBehaviour
                 entity.version = versions[indexToRemove];
             }
         }
-
-        entityType.activeCount--;
     }
 
-    void EnemyMovements()
+    void EntitiesUpdateLogic()
     {
         float horizontalLimit = (Camera.main.orthographicSize * Screen.width / Screen.height) + 5;
         float verticalLimit = Camera.main.orthographicSize + 5;
 
         foreach (EntityType entityType in entityTypes)
         {
-            for (int i = 0; i < entityType.maxEntities; i++)
+            for (int i = entityType.startIndex; i < entityType.startIndex + entityType.maxEntities; i++)
             {
-                int index = entityType.startIndex + i;
+                if (!enemyGameObjects[i].activeSelf) continue;
 
-                if (enemyGameObjects[index].activeSelf)
+                // Cleanup Enemies out of frame
+                if (ProjectileManager.instance.IsOutOfBond(enemyGameObjects[i].transform.position,
+                horizontalLimit, verticalLimit))
                 {
-                    // Cleanup Enemies out of frame
-                    if (ProjectileManager.instance.IsOutOfBond(enemyGameObjects[index].transform.position,
-                    horizontalLimit, verticalLimit))
-                    {
-                        RemoveEnemy(index);
-                    }
-
-                    entityType.updateAction(enemyGameObjects[index]);
+                    RemoveEnemy(i);
                 }
+
+                // if (entityType.unitLogic.movementLogic == null) continue; // with immobile Units
+
+                // entityType.unitLogic.movementLogic.UpdateMovement(enemyGameObjects[i], entityType.unitData.speed);
+                entityType.unitLogic.movementLogic(enemyGameObjects[i], entityType.unitData.speed);
             }
         }
     }
@@ -304,7 +324,7 @@ public class EnemyManager : MonoBehaviour
     {
         if (versions[index] != version)
         {
-            Debug.Log("Wrong Version");
+            Debug.LogWarning("Wrong Version");
             return;
         }
 
@@ -318,4 +338,59 @@ public class EnemyManager : MonoBehaviour
     }
 }
 
-public delegate void EntityUpdateLogic(GameObject entityBody);
+// ENTITY > DATA DEFINITION
+public struct UnitData
+{
+    public UnitData(int hp, int damage, float speed, ShieldData? shieldData = null)
+    {
+        this.hp = hp;
+        this.damage = damage;
+        this.speed = speed;
+        this.shieldData = shieldData;
+    }
+
+    // public readonly int maxHp;
+    public readonly int hp;
+    public readonly int damage;
+    public readonly float speed;
+
+    public ShieldData? shieldData;
+}
+
+// Atomic Data Composition
+public struct ShieldData
+{
+    // public int maxShield;
+    public int shield;
+    // Recovery rate
+}
+
+// ENTITY > LOGIC DEFINITION
+public delegate void EntityUpdateLogic(GameObject entityBody, float speed);
+
+public struct UnitLogic
+{
+    public UnitLogic(EntityUpdateLogic movementLogic = null)
+    {
+        this.movementLogic = movementLogic;
+    }
+
+    public EntityUpdateLogic movementLogic;
+}
+
+// public class EnemyLogicRegistry
+// {
+//     private readonly IMovementLogic[] _movementRegistry;
+
+//     public EnemyLogicRegistry()
+//     {
+//         _movementRegistry = new IMovementLogic[] {
+//             new GroundMovement(), // Scout
+//             new FlyMovement(), // Frigate
+//         };
+
+//         // AttackRegistry
+//     }
+
+//     public IMovementLogic GetMovement(EnemyManager.EnemyType type) => _movementRegistry[(int)type];
+// }

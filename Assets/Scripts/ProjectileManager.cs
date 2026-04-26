@@ -16,6 +16,7 @@ public class ProjectileManager : MonoBehaviour
 
     int[] versions;
     GameObject[] playerLasers;
+    Vector2[] laserDirections;
 
     void Awake()
     {
@@ -27,14 +28,17 @@ public class ProjectileManager : MonoBehaviour
 
         versions = new int[maxProjectile];
         playerLasers = new GameObject[maxProjectile];
+        laserDirections = new Vector2[maxProjectile];
 
         for (int i = 0; i < maxProjectile; i++)
         {
             GameObject laser = Instantiate(laserPrefab, transform);
             laser.SetActive(false);
 
-            var identity = laser.GetComponent<Entity>();
-            identity.index = i;
+            if (laser.TryGetComponent(out Entity entity))
+            {
+                entity.index = i;
+            }
 
             playerLasers[i] = laser;
         }
@@ -55,19 +59,28 @@ public class ProjectileManager : MonoBehaviour
 
     }
 
-    public GameObject SpawnProjectile()
+    public GameObject SpawnProjectile(Vector2 direction)
     {
         if (activeCount >= maxProjectile)
         {
             return null;
         }
 
+        // Spawn GameObject
         GameObject newLaser = playerLasers[activeCount];
         newLaser.SetActive(true);
+
+        // Rotate Laser
+        // newLaser.transform.up = direction; // Unity
+        newLaser.transform.rotation = Player.LookRotation2D(direction); // Engine Agnostic
+
+        // Set Data
         versions[activeCount]++;
+        laserDirections[activeCount] = direction;
 
         if (newLaser.TryGetComponent(out Bullet entity))
         {
+            entity.index = activeCount;
             entity.version = versions[activeCount];
         }
 
@@ -81,36 +94,35 @@ public class ProjectileManager : MonoBehaviour
         GameObject removedLaser = playerLasers[indexToRemove];
         removedLaser.SetActive(false);
 
-        int lastIndex = activeCount - 1;
+        // Update Version
+        versions[indexToRemove]++;
+        activeCount--; // LastIndex
 
-        if (indexToRemove != lastIndex)
+        // Debug.Log($"REMOVE laser Entity at Index = {indexToRemove}, REPLACE Last Index = {activeCount}");
+
+        if (indexToRemove != activeCount)
         {
             // Last Object -> Removed Index
-            GameObject movedProjectile = playerLasers[lastIndex];
+            GameObject movedProjectile = playerLasers[activeCount];
+            playerLasers[activeCount] = removedLaser;
 
-            // Swap
+            // Swap Data
             playerLasers[indexToRemove] = movedProjectile;
-            playerLasers[lastIndex] = removedLaser;
+            laserDirections[indexToRemove] = laserDirections[activeCount];
 
             // Update GameObject Index
             if (movedProjectile.TryGetComponent(out Entity entity))
             {
                 entity.index = indexToRemove;
-            }
-
-            if (removedLaser.TryGetComponent(out Entity removedEntity))
-            {
-                removedEntity.index = lastIndex;
+                entity.version = versions[indexToRemove];
             }
         }
-
-        // Update Version
-        versions[indexToRemove]++;
-        activeCount--;
     }
 
-    public void LaserHit(int laserIndex, int entityIndex, int entityVersion)
+    public void LaserHit(int laserIndex, int laserVersion, int entityIndex, int entityVersion)
     {
+        if (laserVersion != versions[laserIndex]) return;
+
         EnemyManager.instance.ApplyDamage(entityIndex, entityVersion, laserDamage);
         RemoveProjectile(laserIndex);
     }
@@ -128,7 +140,8 @@ public class ProjectileManager : MonoBehaviour
 
         for (int i = 0; i < activeCount; i++)
         {
-            playerLasers[i].transform.position += playerLasers[i].transform.up * laserSpeed;
+            // playerLasers[i].transform.position += playerLasers[i].transform.up * laserSpeed;
+            playerLasers[i].transform.position += (Vector3) (laserDirections[i] * laserSpeed);
 
             if (IsOutOfBond(playerLasers[i].transform.position, horizontalLimit, verticalLimit))
             {
