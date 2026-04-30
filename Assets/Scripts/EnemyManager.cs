@@ -34,13 +34,24 @@ public class EnemyManager : MonoBehaviour
     public float frigateSpeed = 0.05f;
 
     // [Header("ECS")]
-    delegate void UpdateLogic(int index, EntityType entityType);
-    delegate void TakeDamageLogic(int index, EntityType entityType, int dmg);
-    delegate void SpawnLogic(int index, EntityType entityType);
+    delegate void EntityHandler(EntityContext ctx);
+    delegate void TakeDamageLogic(EntityContext ctx, int dmg);
+
+    readonly struct EntityContext
+    {
+        public readonly int index;
+        public readonly EntityType type;
+
+        public EntityContext(int index, EntityType type)
+        {
+            this.index = index;
+            this.type = type;
+        }
+    }
 
     struct EntityType
     {
-        public EntityType(EnemyType type, int maxEntities, GameObject prefab, UnitData unitData, SpawnLogic spawnLogic, UpdateLogic updateLogic, TakeDamageLogic takeDamageLogic)
+        public EntityType(EnemyType type, int maxEntities, GameObject prefab, UnitData unitData, EntityHandler spawnLogic, EntityHandler updateLogic, TakeDamageLogic takeDamageLogic)
         {
             this.type = type;
             typeAsInt = (int)type;
@@ -61,8 +72,8 @@ public class EnemyManager : MonoBehaviour
         public int activeCount;
         public GameObject prefab;
         public UnitData unitData;
-        public SpawnLogic spawnLogic;
-        public UpdateLogic updateLogic;
+        public EntityHandler spawnLogic;
+        public EntityHandler updateLogic;
         public TakeDamageLogic takeDamageLogic;
 
         public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
@@ -195,8 +206,8 @@ public class EnemyManager : MonoBehaviour
         // SCOUT Type
         UnitData scoutData = new UnitData(scoutHp, scoutDamage, scoutSpeed, null);
 
-        UpdateLogic scoutUpdate = (index, entityType) => StraightMovement(enemyGameObjects[index], entityType.unitData.speed);
-        TakeDamageLogic scoutDamageLogic = (index, entityType, dmg) => enemyHps[index] -= dmg;
+        EntityHandler scoutUpdate = (ctx) => StraightMovement(enemyGameObjects[ctx.index], ctx.type.unitData.speed);
+        TakeDamageLogic scoutDamageLogic = (ctx, dmg) => enemyHps[ctx.index] -= dmg;
 
         // FRIGATE Type
         int maxFrigate = 250;
@@ -205,12 +216,12 @@ public class EnemyManager : MonoBehaviour
         enemyDataRegistry.shieldData[0] = new ShieldData(frigateShield);
         UnitData frigateData = new UnitData(frigateHp, frigateDamage, frigateSpeed, new int[] { 0, 0 }); // First element = index for Registered Armor
 
-        SpawnLogic frigateSpawn = (index, entityType) => enemyShields[index - entityType.startIndex] = enemyDataRegistry.shieldData[frigateData.additionalData[1]].shield;
-        UpdateLogic frigateUpdate = (index, entityType) => OscilatingMovement(enemyGameObjects[index], entityType.unitData.speed);
-        TakeDamageLogic frigateDamageLogic = (index, entityType, dmg) =>
+        EntityHandler frigateSpawn = (ctx) => enemyShields[ctx.index - ctx.type.startIndex] = enemyDataRegistry.shieldData[frigateData.additionalData[1]].shield;
+        EntityHandler frigateUpdate = (ctx) => OscilatingMovement(enemyGameObjects[ctx.index], ctx.type.unitData.speed);
+        TakeDamageLogic frigateDamageLogic = (ctx, dmg) =>
         {
-            int shield = enemyShields[index - entityType.startIndex];
-            ArmorAndShield(ref enemyHps[index], enemyDataRegistry.armorData[frigateData.additionalData[0]].armor, ref shield, dmg);
+            int shield = enemyShields[ctx.index - ctx.type.startIndex];
+            ArmorAndShield(ref enemyHps[ctx.index], enemyDataRegistry.armorData[frigateData.additionalData[0]].armor, ref shield, dmg);
         };
 
         // CREATE Types
@@ -242,7 +253,7 @@ public class EnemyManager : MonoBehaviour
 
         if (entityType.spawnLogic != null)
         {
-            entityType.spawnLogic(spawnIndex, entityType); // Additional SpawnLogic
+            entityType.spawnLogic(new EntityContext(spawnIndex, entityType)); // Additional SpawnLogic
         }
 
         if (spawnedEnemy.TryGetComponent(out Entity entity))
@@ -309,7 +320,7 @@ public class EnemyManager : MonoBehaviour
                     RemoveEnemy(i);
                 }
 
-                entityType.updateLogic(i, entityType);
+                entityType.updateLogic(new EntityContext(i, entityType));
             }
         }
     }
@@ -323,7 +334,7 @@ public class EnemyManager : MonoBehaviour
         }
 
         EntityType entityType = IndexToEntityType(index);
-        entityType.takeDamageLogic(index, entityType, damage);
+        entityType.takeDamageLogic(new EntityContext(index, entityType), damage);
 
         if (enemyHps[index] <= 0)
         {
