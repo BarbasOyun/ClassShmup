@@ -17,39 +17,6 @@ public class EnemyManager : MonoBehaviour
     float angle;
     Quaternion lookDirection;
 
-    // [Header("ECS")]
-    struct EntityType
-    {
-        public EntityType(EnemyType type, int maxEntities, GameObject prefab, UnitData unitData, UnitLogic unitLogic)
-        {
-            this.type = type;
-            startIndex = 0;
-            this.maxEntities = maxEntities;
-            activeCount = 0;
-            this.prefab = prefab;
-            this.unitData = unitData;
-            this.unitLogic = unitLogic;
-        }
-
-        public EnemyType type;
-        public int startIndex;
-        public int maxEntities;
-        public int activeCount;
-        public GameObject prefab;
-        public UnitData unitData;
-        public UnitLogic unitLogic;
-
-        public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
-    }
-
-    EntityType[] entityTypes;
-
-    int maxEnemies;
-    int[] versions;
-    GameObject[] enemyGameObjects;
-    int[] enemyHps;
-    // int[] enemyShield;
-
     // DATA SOURCE
     // TODO : Game Engine Agnostic = Move to file, Unity = ScriptableObject
     [Header("ENEMY - Scout")]
@@ -61,13 +28,61 @@ public class EnemyManager : MonoBehaviour
     [Header("ENEMY - Frigate")]
     public GameObject frigatePrefab;
     public int frigateHp = 30;
+    public int frigateArmor = 1;
+    public int frigateShield = 10;
     public int frigateDamage = 20;
     public float frigateSpeed = 0.05f;
-    public float shield = 10;
 
-    // LOGIC
-    public EntityUpdateLogic straightMovement = (entityBody, speed) => entityBody.transform.position += entityBody.transform.up * speed;
-    public EntityUpdateLogic oscilatingMovement = (entityBody, speed) => entityBody.transform.position += (entityBody.transform.right * (float) Math.Sin(Time.time) + entityBody.transform.up) * speed;
+    // [Header("ECS")]
+    delegate void UpdateLogic(int index, EntityType entityType);
+    delegate void TakeDamageLogic(int index, EntityType entityType, int dmg);
+    delegate void SpawnLogic(int index, EntityType entityType);
+
+    struct EntityType
+    {
+        public EntityType(EnemyType type, int maxEntities, GameObject prefab, UnitData unitData, SpawnLogic spawnLogic, UpdateLogic updateLogic, TakeDamageLogic takeDamageLogic)
+        {
+            this.type = type;
+            typeAsInt = (int)type;
+            startIndex = 0;
+            this.maxEntities = maxEntities;
+            activeCount = 0;
+            this.prefab = prefab;
+            this.unitData = unitData;
+            this.spawnLogic = spawnLogic;
+            this.updateLogic = updateLogic;
+            this.takeDamageLogic = takeDamageLogic;
+        }
+
+        public EnemyType type;
+        public int typeAsInt;
+        public int startIndex;
+        public int maxEntities;
+        public int activeCount;
+        public GameObject prefab;
+        public UnitData unitData;
+        public SpawnLogic spawnLogic;
+        public UpdateLogic updateLogic;
+        public TakeDamageLogic takeDamageLogic;
+
+        public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
+    }
+
+    EnemyDataRegistry enemyDataRegistry;
+    EntityType[] entityTypes;
+
+    // Default Dynamic Arrays -> Length = MaxEntities
+    int[] versions;
+    GameObject[] enemyGameObjects;
+    int[] enemyHps;
+
+    // Type Dynamic Arrays -> Length Vary
+    // Use Sparse Set/Array for Data in Update Or
+    // Use IndexDelta -> Index - EntityType.StartIndex
+    // Types have to be organised e.g. Shield1, Shield2, Shield3 + Armor1, Armor2 + Movement1
+    int[] enemyShields;
+    // Modifiers
+    // StateMachines
 
     void Awake()
     {
@@ -124,10 +139,10 @@ public class EnemyManager : MonoBehaviour
         enemy.transform.position = spawnLocations[0].transform.position + new Vector3(locationOffset, 0);
     }
 
-    // ECS
+    // Rosaure ECS
     void InitECS()
     {
-        InitEntityType();
+        int[] additionalData = InitEntityType();
 
         // Create Dynamic Arrays
         int totalEntity = 0;
@@ -140,7 +155,7 @@ public class EnemyManager : MonoBehaviour
         enemyGameObjects = new GameObject[totalEntity];
         versions = new int[totalEntity];
         enemyHps = new int[totalEntity];
-        maxEnemies = totalEntity;
+        enemyShields = new int[additionalData[0]];
 
         // Instantiate/Setup GameObjects
         int totalEntityCount = 0;
@@ -167,66 +182,44 @@ public class EnemyManager : MonoBehaviour
         }
     }
 
-    void InitEntityType()
+    int[] InitEntityType()
     {
-        // Scout
-        UnitData scoutData = new UnitData( scoutHp, scoutDamage, scoutSpeed);
-        UnitLogic scoutLogic = new UnitLogic(straightMovement);
+        // Bake Entity Types
+        // ENTITY TYPE > LOGIC DEFINITION
+        // + Where to get Data
+        enemyDataRegistry = new EnemyDataRegistry(
+            armorDataCount: 1,
+            shieldDataCount: 1
+            );
 
-        // Frigate
-        UnitData frigateData = new UnitData(frigateHp, frigateDamage, frigateSpeed, new ShieldData());
-        UnitLogic frigateLogic = new UnitLogic(oscilatingMovement);
+        // SCOUT Type
+        UnitData scoutData = new UnitData(scoutHp, scoutDamage, scoutSpeed, null);
 
-        entityTypes = new EntityType[] {
-            new EntityType(EnemyType.Scout, 250, scoutPrefab, scoutData, scoutLogic),
-            new EntityType(EnemyType.Frigate, 250, frigatePrefab, frigateData, frigateLogic)
+        UpdateLogic scoutUpdate = (index, entityType) => StraightMovement(enemyGameObjects[index], entityType.unitData.speed);
+        TakeDamageLogic scoutDamageLogic = (index, entityType, dmg) => enemyHps[index] -= dmg;
+
+        // FRIGATE Type
+        int maxFrigate = 250;
+
+        enemyDataRegistry.armorData[0] = new ArmorData(frigateArmor); // Register Additional Data (Armor)
+        enemyDataRegistry.shieldData[0] = new ShieldData(frigateShield);
+        UnitData frigateData = new UnitData(frigateHp, frigateDamage, frigateSpeed, new int[] { 0, 0 }); // First element = index for Registered Armor
+
+        SpawnLogic frigateSpawn = (index, entityType) => enemyShields[index - entityType.startIndex] = enemyDataRegistry.shieldData[frigateData.additionalData[1]].shield;
+        UpdateLogic frigateUpdate = (index, entityType) => OscilatingMovement(enemyGameObjects[index], entityType.unitData.speed);
+        TakeDamageLogic frigateDamageLogic = (index, entityType, dmg) =>
+        {
+            int shield = enemyShields[index - entityType.startIndex];
+            ArmorAndShield(ref enemyHps[index], enemyDataRegistry.armorData[frigateData.additionalData[0]].armor, ref shield, dmg);
+        };
+
+        // CREATE Types
+        entityTypes = new[] {
+            new EntityType(EnemyType.Scout, 250, scoutPrefab, scoutData, null, scoutUpdate, scoutDamageLogic),
+            new EntityType(EnemyType.Frigate, maxFrigate, frigatePrefab, frigateData, frigateSpawn, frigateUpdate, frigateDamageLogic)
             };
-    }
 
-    ref EntityType FindEntityType(EnemyType type)
-    {
-        int typeIndex = 0;
-        EntityType currentType = entityTypes[typeIndex];
-
-        while (currentType.type != type)
-        {
-            typeIndex++;
-
-            // Exit loop if type not found
-            if (typeIndex >= entityTypes.Length)
-            {
-                Debug.LogError("Type Not Found");
-                return ref entityTypes[typeIndex];
-            }
-
-            currentType = entityTypes[typeIndex];
-        }
-
-        // Debug.Log($"FIND ENTITY TYPE : EnemyType = {type} -> EntityType = {currentType}");
-        return ref entityTypes[typeIndex];
-    }
-
-    ref EntityType IndexToEntityType(int index)
-    {
-        int typeIndex = 0;
-        EntityType currentType = entityTypes[typeIndex];
-
-        while (index < currentType.startIndex || currentType.startIndex + currentType.maxEntities - 1 < index)
-        {
-            typeIndex++;
-
-            // Exit loop if type not found
-            if (typeIndex >= entityTypes.Length)
-            {
-                Debug.LogError("Type Not Found");
-                return ref entityTypes[typeIndex];
-            }
-
-            currentType = entityTypes[typeIndex];
-        }
-
-        // Debug.Log($"INDEX TO ENTITY : index = {index} -> EntityType = {currentType}");
-        return ref entityTypes[typeIndex]; ;
+        return new int[] { maxFrigate }; // Return Data to Create Dense Arrays
     }
 
     public GameObject SpawnEnemyType(EnemyType type)
@@ -246,6 +239,11 @@ public class EnemyManager : MonoBehaviour
 
         versions[spawnIndex]++;
         enemyHps[spawnIndex] = entityType.unitData.hp;
+
+        if (entityType.spawnLogic != null)
+        {
+            entityType.spawnLogic(spawnIndex, entityType); // Additional SpawnLogic
+        }
 
         if (spawnedEnemy.TryGetComponent(out Entity entity))
         {
@@ -301,21 +299,17 @@ public class EnemyManager : MonoBehaviour
 
         foreach (EntityType entityType in entityTypes)
         {
-            for (int i = entityType.startIndex; i < entityType.startIndex + entityType.maxEntities; i++)
+            for (int i = entityType.startIndex; i < entityType.startIndex + entityType.activeCount; i++)
             {
-                if (!enemyGameObjects[i].activeSelf) continue;
-
                 // Cleanup Enemies out of frame
                 if (ProjectileManager.instance.IsOutOfBond(enemyGameObjects[i].transform.position,
                 horizontalLimit, verticalLimit))
                 {
+                    // Remove Life
                     RemoveEnemy(i);
                 }
 
-                // if (entityType.unitLogic.movementLogic == null) continue; // with immobile Units
-
-                // entityType.unitLogic.movementLogic.UpdateMovement(enemyGameObjects[i], entityType.unitData.speed);
-                entityType.unitLogic.movementLogic(enemyGameObjects[i], entityType.unitData.speed);
+                entityType.updateLogic(i, entityType);
             }
         }
     }
@@ -328,69 +322,146 @@ public class EnemyManager : MonoBehaviour
             return;
         }
 
-        // TODO : Unit Type behavior
-        int hp = enemyHps[index] -= damage;
+        EntityType entityType = IndexToEntityType(index);
+        entityType.takeDamageLogic(index, entityType, damage);
 
-        if (hp <= 0)
+        if (enemyHps[index] <= 0)
         {
             RemoveEnemy(index);
         }
     }
+
+    // UTILS
+    ref EntityType FindEntityType(EnemyType type)
+    {
+        int typeIndex = 0;
+        EntityType currentType = entityTypes[typeIndex];
+
+        while (currentType.type != type)
+        {
+            typeIndex++;
+
+            // Exit loop if type not found
+            if (typeIndex >= entityTypes.Length)
+            {
+                Debug.LogError("Type Not Found");
+                return ref entityTypes[typeIndex];
+            }
+
+            currentType = entityTypes[typeIndex];
+        }
+
+        // Debug.Log($"FIND ENTITY TYPE : EnemyType = {type} -> EntityType = {currentType}");
+        return ref entityTypes[typeIndex];
+    }
+
+    ref EntityType IndexToEntityType(int index)
+    {
+        int typeIndex = 0;
+        EntityType currentType = entityTypes[typeIndex];
+
+        while (index < currentType.startIndex || currentType.startIndex + currentType.maxEntities - 1 < index)
+        {
+            typeIndex++;
+
+            // Exit loop if type not found
+            if (typeIndex >= entityTypes.Length)
+            {
+                Debug.LogError("Type Not Found");
+                return ref entityTypes[typeIndex];
+            }
+
+            currentType = entityTypes[typeIndex];
+        }
+
+        // Debug.Log($"INDEX TO ENTITY : index = {index} -> EntityType = {currentType}");
+        return ref entityTypes[typeIndex]; ;
+    }
+
+    // ENEMY LOGIC
+    void ArmorAndShield(ref int hp, int armor, ref int shield, int dmg)
+    {
+        hp -= ArmorLogic(armor, ShieldLogic(ref shield, dmg));
+    }
+
+    int ArmorLogic(int armor, int dmg)
+    {
+        int mitigatedDamage = dmg - armor;
+        // Debug.Log($"{armor} ARMOR -> DMG = {dmg} -> {mitigatedDamage}");
+        return mitigatedDamage;
+    }
+
+    int ShieldLogic(ref int shield, int dmg)
+    {
+        int mitigatedDamage = dmg - shield;
+
+        int delta = shield - mitigatedDamage;
+        shield = Math.Min(delta, 0);
+        mitigatedDamage = Math.Sign(delta) == -1 ? Math.Abs(delta) : 0;
+        // Debug.Log($"{shield} SHIELD -> DMG = {dmg} -> {mitigatedDamage}");
+        return mitigatedDamage;
+    }
+
+    void StraightMovement(GameObject entityBody, float speed)
+    {
+        entityBody.transform.position += entityBody.transform.up * speed;
+    }
+
+    void OscilatingMovement(GameObject entityBody, float speed)
+    {
+        entityBody.transform.position += (entityBody.transform.right * (float)Math.Sin(Time.time) + entityBody.transform.up) * speed;
+    }
 }
 
-// ENTITY > DATA DEFINITION
+// ENTITY TYPE > DATA DEFINITION
 public struct UnitData
 {
-    public UnitData(int hp, int damage, float speed, ShieldData? shieldData = null)
+    public UnitData(int hp, int damage, float speed, int[] additionalData)
     {
         this.hp = hp;
         this.damage = damage;
         this.speed = speed;
-        this.shieldData = shieldData;
+        this.additionalData = additionalData;
     }
 
     // public readonly int maxHp;
     public readonly int hp;
     public readonly int damage;
     public readonly float speed;
-
-    public ShieldData? shieldData;
+    public readonly int[] additionalData;
 }
 
-// Atomic Data Composition
-public struct ShieldData
+public struct ArmorData // Armor reduce flat Dmg
 {
+    public ArmorData(int armor)
+    {
+        this.armor = armor;
+    }
+
+    public int armor;
+    // public int increasedArmor;
+}
+
+public struct ShieldData // Additional HP not affected by Armor
+{
+    public ShieldData(int shield)
+    {
+        this.shield = shield;
+    }
+
     // public int maxShield;
     public int shield;
     // Recovery rate
 }
 
-// ENTITY > LOGIC DEFINITION
-public delegate void EntityUpdateLogic(GameObject entityBody, float speed);
-
-public struct UnitLogic
+public class EnemyDataRegistry
 {
-    public UnitLogic(EntityUpdateLogic movementLogic = null)
+    public readonly ArmorData[] armorData;
+    public readonly ShieldData[] shieldData;
+
+    public EnemyDataRegistry(int armorDataCount, int shieldDataCount)
     {
-        this.movementLogic = movementLogic;
+        armorData = new ArmorData[armorDataCount];
+        shieldData = new ShieldData[shieldDataCount];
     }
-
-    public EntityUpdateLogic movementLogic;
 }
-
-// public class EnemyLogicRegistry
-// {
-//     private readonly IMovementLogic[] _movementRegistry;
-
-//     public EnemyLogicRegistry()
-//     {
-//         _movementRegistry = new IMovementLogic[] {
-//             new GroundMovement(), // Scout
-//             new FlyMovement(), // Frigate
-//         };
-
-//         // AttackRegistry
-//     }
-
-//     public IMovementLogic GetMovement(EnemyManager.EnemyType type) => _movementRegistry[(int)type];
-// }

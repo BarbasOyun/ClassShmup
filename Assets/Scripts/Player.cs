@@ -3,6 +3,8 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using System.Collections;
+using Debug = UnityEngine.Debug;
+using System.Diagnostics;
 
 public class Player : MonoBehaviour
 {
@@ -121,10 +123,10 @@ public class Player : MonoBehaviour
         if ((Keyboard.current.spaceKey.isPressed || Mouse.current.leftButton.isPressed) && Time.fixedTime > lastShoot + shootDelay)
         {
             GameObject spawnedLaser1 = ProjectileManager.instance.SpawnProjectile(transform.up);
-            GameObject spawnedLaser2 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (0.2f * Math.PI)));
-            GameObject spawnedLaser3 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (0.325f * Math.PI)));
-            GameObject spawnedLaser4 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (-0.2f * Math.PI)));
-            GameObject spawnedLaser5 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float) (-0.325f * Math.PI)));
+            GameObject spawnedLaser2 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(0.2f * Math.PI)));
+            GameObject spawnedLaser3 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(0.325f * Math.PI)));
+            GameObject spawnedLaser4 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(-0.2f * Math.PI)));
+            GameObject spawnedLaser5 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(-0.325f * Math.PI)));
 
             SetLaserTransform(spawnedLaser1);
             SetLaserTransform(spawnedLaser2);
@@ -178,9 +180,30 @@ public class Player : MonoBehaviour
         vector2.x * sinValue + vector2.y * cosValue);
     }
 
-    public static Quaternion LookRotation2D(Vector2 direction) {
+    public static Quaternion LookRotation2D(Vector2 direction)
+    {
         float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
         return Quaternion.Euler(0, 0, angle);
+    }
+
+    public static IEnumerator WaitFrames(int frames)
+    {
+        return WaitFrames(frames);
+    }
+
+    public delegate void Action();
+
+    public static void SpeedTest(String testName, Action action1)
+    {
+        Stopwatch sw = new Stopwatch();
+
+        sw.Start();
+        {
+            action1();
+        }
+        sw.Stop();
+
+        Debug.LogWarning($"{testName} Speed MS = {sw.Elapsed.Milliseconds}");
     }
 
     #endregion
