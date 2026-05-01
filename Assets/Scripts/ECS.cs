@@ -1,17 +1,13 @@
+using System;
 using UnityEngine;
 
 // Rosaure ECS
-public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
+public class ECS<TData, TState> where TState : IECSState // where T2 : struct, Enum
 {
-    delegate void EntityHandler(in EntityContext ctx);
-
-    delegate void TakeDamageLogic(in EntityContext ctx, in int dmg);
-    delegate void RemoveLogic(in EntityContext ctx, in int lastIndex);
-
-    readonly struct EntityContext
+    public readonly struct EntityContext
     {
         public readonly int index;
-        readonly EntityType type;
+        public readonly EntityType type;
 
         public EntityContext(int index, EntityType type)
         {
@@ -20,10 +16,13 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         }
     }
 
-    struct EntityType
+    public delegate void EntityLogic(in EntityContext ctx, TState worldState);
+    public delegate void RemoveLogic(in EntityContext ctx, TState worldState, in int lastIndex);
+
+    public struct EntityType
     {
-        public EntityType(int type, int maxEntities, GameObject prefab, T1 entityData,
-        EntityHandler spawnLogic, RemoveLogic removeLogic, EntityHandler updateLogic, TakeDamageLogic takeDamageLogic)
+        public EntityType(int type, int maxEntities, GameObject prefab, TData entityData,
+        EntityLogic spawnLogic, RemoveLogic removeLogic, EntityLogic updateLogic)
         {
             this.type = type;
             // typeAsInt = System.Runtime.CompilerServices.Unsafe.As<T2, int>(ref type);
@@ -35,7 +34,6 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
             this.spawnLogic = spawnLogic;
             this.removeLogic = removeLogic;
             this.updateLogic = updateLogic;
-            this.takeDamageLogic = takeDamageLogic;
         }
 
         public int type;
@@ -43,44 +41,27 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         public int maxEntities;
         public int activeCount;
         public GameObject prefab;
-        public T1 entityData;
-        public EntityHandler spawnLogic;
+        public TData entityData;
+        public EntityLogic spawnLogic;
         public RemoveLogic removeLogic;
-        public EntityHandler updateLogic;
-        public TakeDamageLogic takeDamageLogic;
+        public EntityLogic updateLogic;
 
         public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
     }
 
-    EntityType[] entityTypes;
+    public EntityType[] entityTypes;
 
     // Default Dynamic Arrays -> Length = MaxEntities
-    int[] versions;
-    GameObject[] enemyGameObjects;
+    public int[] versions;
+    public GameObject[] entityGameObjects;
 
-    void Start()
+    public void Init(GameObject holder, EntityType[] entityTypes, int totalEntity)
     {
+        this.entityTypes = entityTypes;
 
-    }
-
-    void Update()
-    {
-
-    }
-
-    void InitECS()
-    {
         // Create Dynamic Arrays
-        int totalEntity = 0;
-
-        foreach (EntityType entityType in entityTypes)
-        {
-            totalEntity += entityType.maxEntities;
-        }
-
-        enemyGameObjects = new GameObject[totalEntity];
+        entityGameObjects = new GameObject[totalEntity];
         versions = new int[totalEntity];
-        // Init Additional
 
         // Instantiate/Setup GameObjects
         int totalEntityCount = 0;
@@ -89,7 +70,7 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         {
             for (int j = 0; j < entityTypes[i].maxEntities; j++)
             {
-                GameObject spawnedPrefab = Instantiate(entityTypes[i].prefab, transform);
+                GameObject spawnedPrefab = UnityEngine.Object.Instantiate(entityTypes[i].prefab, holder.transform);
                 spawnedPrefab.SetActive(false);
 
                 int index = totalEntityCount + j;
@@ -99,7 +80,7 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
                     entity.index = index;
                 }
 
-                enemyGameObjects[index] = spawnedPrefab;
+                entityGameObjects[index] = spawnedPrefab;
             }
 
             entityTypes[i].startIndex = totalEntityCount;
@@ -107,7 +88,7 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         }
     }
 
-    public GameObject SpawnEntityType(int type)
+    public GameObject SpawnEntityType(int type, TState state)
     {
         ref EntityType entityType = ref FindEntityType(type);
 
@@ -119,14 +100,14 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
 
         // Spawn Next
         int spawnIndex = entityType.startIndex + entityType.activeCount;
-        GameObject spawnedEnemy = enemyGameObjects[spawnIndex];
+        GameObject spawnedEnemy = entityGameObjects[spawnIndex];
         spawnedEnemy.SetActive(true);
 
         versions[spawnIndex]++;
 
         if (entityType.spawnLogic != null)
         {
-            entityType.spawnLogic(new EntityContext(spawnIndex, entityType)); // Additional SpawnLogic
+            entityType.spawnLogic(new EntityContext(spawnIndex, entityType), state); // Additional SpawnLogic
         }
 
         if (spawnedEnemy.TryGetComponent(out Entity entity))
@@ -142,11 +123,11 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         return spawnedEnemy;
     }
 
-    public void RemoveEntity(int indexToRemove)
+    public void RemoveEntity(int indexToRemove, TState state)
     {
         ref EntityType entityType = ref IndexToEntityType(indexToRemove);
 
-        GameObject removedEnemy = enemyGameObjects[indexToRemove];
+        GameObject removedEnemy = entityGameObjects[indexToRemove];
         removedEnemy.SetActive(false);
 
         // Update Version
@@ -160,12 +141,12 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         if (indexToRemove != lastEntityIndex)
         {
             // Swap GameObjects
-            GameObject movedEnemy = enemyGameObjects[lastEntityIndex];
-            enemyGameObjects[lastEntityIndex] = removedEnemy;
+            GameObject movedEnemy = entityGameObjects[lastEntityIndex];
+            entityGameObjects[lastEntityIndex] = removedEnemy;
 
             // Move Data : Last Object -> Removed Index
-            entityType.removeLogic(new EntityContext(indexToRemove, entityType), lastEntityIndex);
-            enemyGameObjects[indexToRemove] = movedEnemy;
+            entityGameObjects[indexToRemove] = movedEnemy;
+            entityType.removeLogic(new EntityContext(indexToRemove, entityType), state, lastEntityIndex);
 
             // Update Entity
             if (movedEnemy.TryGetComponent(out Entity entity))
@@ -176,19 +157,19 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         }
     }
 
-    void EntitiesUpdateLogic()
+    public void EntitiesUpdateLogic(TState state)
     {
         foreach (EntityType entityType in entityTypes)
         {
             for (int i = entityType.startIndex; i < entityType.startIndex + entityType.activeCount; i++)
             {
-                entityType.updateLogic(new EntityContext(i, entityType));
+                entityType.updateLogic(new EntityContext(i, entityType), state);
             }
         }
     }
 
     // UTILS
-    ref EntityType FindEntityType(int type)
+    public ref EntityType FindEntityType(int type)
     {
         int typeIndex = 0;
         EntityType currentType = entityTypes[typeIndex];
@@ -211,7 +192,7 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         return ref entityTypes[typeIndex];
     }
 
-    ref EntityType IndexToEntityType(int index)
+    public ref EntityType IndexToEntityType(int index)
     {
         int typeIndex = 0;
         EntityType currentType = entityTypes[typeIndex];
@@ -233,4 +214,10 @@ public class ECS<T1> : MonoBehaviour // where T2 : struct, Enum
         // Debug.Log($"INDEX TO ENTITY : index = {index} -> EntityType = {currentType}");
         return ref entityTypes[typeIndex]; ;
     }
+}
+
+public interface IECSState
+{
+    public GameObject[] entityGameObjects {get;}
+    // versions
 }
