@@ -202,7 +202,6 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
             );
     }
 
-
     public void ApplyDamage(int index, int version, int dmg)
     {
         if (versions[index] != version)

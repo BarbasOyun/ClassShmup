@@ -32,9 +32,12 @@ public class Player : MonoBehaviour
     private float lastShoot;
     //List<GameObject> lasers;
 
+    private Vector2 shootDirection1, shootDirection2, shootDirection3, shootDirection4;
+
     void Awake()
     {
         UpdateMovementLimits();
+        UpdateShootDirection();
     }
 
     void Start()
@@ -118,21 +121,24 @@ public class Player : MonoBehaviour
         horizontalLimit = Camera.main.orthographicSize * Screen.width / Screen.height - spriteRenderer.bounds.size.x / 2;
     }
 
+    void UpdateShootDirection()
+    {
+        // In update if player can rotate
+        shootDirection1 = RotateVector(transform.up, (float)(0.2f * Math.PI));
+        shootDirection2 = RotateVector(transform.up, (float)(0.325f * Math.PI));
+        shootDirection3 = new Vector2(-shootDirection1.x, shootDirection1.y);
+        shootDirection4 = new Vector2(-shootDirection2.x, shootDirection2.y);
+    }
+
     void Shoot()
     {
         if ((Keyboard.current.spaceKey.isPressed || Mouse.current.leftButton.isPressed) && Time.fixedTime > lastShoot + shootDelay)
         {
-            GameObject spawnedLaser1 = ProjectileManager.instance.SpawnProjectile(transform.up);
-            GameObject spawnedLaser2 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(0.2f * Math.PI)));
-            GameObject spawnedLaser3 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(0.325f * Math.PI)));
-            GameObject spawnedLaser4 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(-0.2f * Math.PI)));
-            GameObject spawnedLaser5 = ProjectileManager.instance.SpawnProjectile(RotateVector(transform.up, (float)(-0.325f * Math.PI)));
-
-            SetLaserTransform(spawnedLaser1);
-            SetLaserTransform(spawnedLaser2);
-            SetLaserTransform(spawnedLaser3);
-            SetLaserTransform(spawnedLaser4);
-            SetLaserTransform(spawnedLaser5);
+            ShootLaser(transform.up); // Forward
+            ShootLaser(shootDirection1); // Left? 36°
+            ShootLaser(shootDirection2); // Left 58.5°
+            ShootLaser(shootDirection3); // Mirror
+            ShootLaser(shootDirection4);
 
             lastShoot = Time.fixedTime;
 
@@ -147,12 +153,16 @@ public class Player : MonoBehaviour
         }
     }
 
-    void SetLaserTransform(GameObject laser)
+    void ShootLaser(Vector2 direction)
     {
+        var laser = ProjectileManager.instance.SpawnProjectile(ProjectileManager.ProjectileType.Laser, direction);
+
         if (!laser) return;
 
         laser.transform.position = shootPos.transform.position;
+        // Rotate Laser
         // laser.transform.rotation = transform.rotation;
+        laser.transform.rotation = LookRotation2D(direction); // Engine Agnostic
     }
 
     public void TakeDamage(int damage)
@@ -190,8 +200,6 @@ public class Player : MonoBehaviour
     {
         return WaitFrames(frames);
     }
-
-    public delegate void Action();
 
     public static void SpeedTest(String testName, Action action1)
     {

@@ -1,25 +1,31 @@
+using System.Linq;
 using UnityEngine;
 
-public class ProjectileManager : MonoBehaviour
+public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileManager>.IECSState
 {
     // TODO : Use Service Locator
     public static ProjectileManager instance;
 
+    public float verticalLimit;
+    public float horizontalLimit;
+
+    // DATA SOURCE
     [Header("Player Laser")]
     public GameObject laserPrefab;
     public int laserDamage = 10;
     public float laserSpeed = 0.3f;
 
-    public float verticalLimit;
-    public float horizontalLimit;
+    // ECS Implementation
+    public class ProjectileECS : ECS<ProjectileData, ProjectileManager> { }
 
-    // Laser ECS
-    int maxProjectile = 500;
-    int activeCount = 0;
+    public enum ProjectileType { Laser, _Count }
 
-    int[] versions;
-    GameObject[] playerLasers;
-    Vector2[] laserDirections;
+    public ProjectileECS.EntityType[] entityTypes { get; set; }
+    public GameObject[] entityGameObjects { get; set; }
+    public int[] versions { get; set; }
+    // Custom fields
+    Vector2[] projectileDirections;
+    Vector2 nextDirection;
 
     void Awake()
     {
@@ -29,22 +35,7 @@ public class ProjectileManager : MonoBehaviour
             DontDestroyOnLoad(gameObject);
         }
 
-        versions = new int[maxProjectile];
-        playerLasers = new GameObject[maxProjectile];
-        laserDirections = new Vector2[maxProjectile];
-
-        for (int i = 0; i < maxProjectile; i++)
-        {
-            GameObject laser = Instantiate(laserPrefab, transform);
-            laser.SetActive(false);
-
-            if (laser.TryGetComponent(out Entity entity))
-            {
-                entity.index = i;
-            }
-
-            playerLasers[i] = laser;
-        }
+        InitEntityType();
     }
 
     void Start()
@@ -54,7 +45,10 @@ public class ProjectileManager : MonoBehaviour
 
     void FixedUpdate()
     {
-        LaserMovements();
+        verticalLimit = Camera.main.orthographicSize;
+        horizontalLimit = Camera.main.orthographicSize * Screen.width / Screen.height;
+
+        ProjectileECS.EntitiesUpdateLogic(this);
     }
 
     void Update()
@@ -62,72 +56,16 @@ public class ProjectileManager : MonoBehaviour
 
     }
 
-    public GameObject SpawnProjectile(Vector2 direction)
+    public GameObject SpawnProjectile(ProjectileType type, Vector2 direction)
     {
-        if (activeCount >= maxProjectile)
-        {
-            return null;
-        }
+        // ProjectileECS.EntityType entityType = entityTypes[(int)type];
+        // int spawnIndex = entityType.startIndex + entityType.activeCount;
+        // projectileDirections[spawnIndex] = direction;
 
-        // Spawn GameObject
-        GameObject newLaser = playerLasers[activeCount];
-        newLaser.SetActive(true);
-
-        // Rotate Laser
-        // newLaser.transform.up = direction; // Unity
-        newLaser.transform.rotation = Player.LookRotation2D(direction); // Engine Agnostic
-
-        // Set Data
-        versions[activeCount]++;
-        laserDirections[activeCount] = direction;
-
-        if (newLaser.TryGetComponent(out Bullet entity))
-        {
-            entity.index = activeCount;
-            entity.version = versions[activeCount];
-        }
-
-        activeCount++;
+        nextDirection = direction;
+        GameObject newLaser = ProjectileECS.SpawnEntityType(this, (int)type);
 
         return newLaser;
-    }
-
-    public void RemoveProjectile(int indexToRemove)
-    {
-        GameObject removedLaser = playerLasers[indexToRemove];
-        removedLaser.SetActive(false);
-
-        // Update Version
-        versions[indexToRemove]++;
-        activeCount--; // LastIndex
-
-        // Debug.Log($"REMOVE laser Entity at Index = {indexToRemove}, REPLACE Last Index = {activeCount}");
-
-        if (indexToRemove != activeCount)
-        {
-            // Last Object -> Removed Index
-            GameObject movedProjectile = playerLasers[activeCount];
-            playerLasers[activeCount] = removedLaser;
-
-            // Swap Data
-            playerLasers[indexToRemove] = movedProjectile;
-            laserDirections[indexToRemove] = laserDirections[activeCount];
-
-            // Update GameObject Index
-            if (movedProjectile.TryGetComponent(out Entity entity))
-            {
-                entity.index = indexToRemove;
-                entity.version = versions[indexToRemove];
-            }
-        }
-    }
-
-    public void LaserHit(int laserIndex, int laserVersion, int entityIndex, int entityVersion)
-    {
-        if (laserVersion != versions[laserIndex]) return;
-
-        EnemyManager.instance.ApplyDamage(entityIndex, entityVersion, laserDamage);
-        RemoveProjectile(laserIndex);
     }
 
     public bool IsOutOfBond(Vector3 pos, float horizontalLimit, float verticalLimit)
@@ -135,26 +73,117 @@ public class ProjectileManager : MonoBehaviour
         return pos.x > horizontalLimit || pos.x < -horizontalLimit || pos.y > verticalLimit || pos.y < -verticalLimit;
     }
 
-    void LaserMovements()
+    // ECS Implementation
+    void InitEntityType()
     {
-        // Cleanup Lasers out of frame
-        verticalLimit = Camera.main.orthographicSize;
-        horizontalLimit = Camera.main.orthographicSize * Screen.width / Screen.height;
+        int[] typeCount = new int[(int)ProjectileType._Count];
+        typeCount[(int)ProjectileType.Laser] = 300;
+        int totalEntity = typeCount.Sum();
 
-        for (int i = 0; i < activeCount; i++)
+        // CREATE Types
+        entityTypes = new[] {
+            LaserType(typeCount[(int)ProjectileType.Laser]),
+            };
+
+        // CREATE Runtime arrays
+        // this.dataRegistry = dataRegistry;
+        entityGameObjects = new GameObject[totalEntity];
+        versions = new int[totalEntity];
+        projectileDirections = new Vector2[totalEntity];
+
+        ProjectileECS.Init(this, gameObject);
+    }
+
+    ProjectileECS.EntityType LaserType(int maxLaser)
+    {
+        void LaserUpdate(ref ProjectileECS.EntityType type, in int index)
         {
-            // playerLasers[i].transform.position += playerLasers[i].transform.up * laserSpeed;
-            playerLasers[i].transform.position += (Vector3) (laserDirections[i] * laserSpeed);
-
-            if (IsOutOfBond(playerLasers[i].transform.position, horizontalLimit, verticalLimit))
-            {
-                RemoveProjectile(i);
-            }
+            RemoveOutOfBound(ref type, index);
+            ProjectileMovements(in type, in index);
         }
 
-        // foreach (GameObject laser in laserGameObjects)
-        // {
-        //     laser.transform.position += laser.transform.up * laserSpeed; // * Time.deltaTime;
-        // }
+        ProjectileData laserData = new ProjectileData(laserDamage, laserSpeed);
+
+        return new ProjectileECS.EntityType(
+            (int)ProjectileType.Laser,
+            maxLaser,
+            laserPrefab,
+            laserData,
+            SpawnLogic,
+            RemoveLogic,
+            LaserUpdate
+        );
     }
+
+    public void SpawnLogic(ref ProjectileECS.EntityType type, in int index)
+    {
+        // var entityData = type.entityData;
+        projectileDirections[index] = nextDirection;
+
+        // Capability
+    }
+
+    public void RemoveLogic(in ProjectileECS.EntityType type, in int index, in int originalIndex)
+    {
+        var entityData = type.entityData;
+        projectileDirections[index] = projectileDirections[originalIndex];
+
+        // Capability
+    }
+
+    public void ProjectileHit(int projectilIndex, int projectileVersion, int entityIndex, int entityVersion)
+    {
+        if (versions[projectilIndex] != projectileVersion)
+        {
+            Debug.LogWarning("Wrong Laser Version");
+            return;
+        }
+
+        ref ProjectileECS.EntityType entityType = ref ProjectileECS.IndexToEntityType(this, projectilIndex);
+
+        // TODO : Projectile Type Effect
+        EnemyManager.instance.ApplyDamage(entityIndex, entityVersion, laserDamage);
+        ProjectileECS.RemoveEntity(this, ref entityType, projectilIndex);
+    }
+
+    public void RemoveOutOfBound(ref ProjectileECS.EntityType type, in int index)
+    {
+        if (IsOutOfBond(entityGameObjects[index].transform.position, horizontalLimit, verticalLimit))
+        {
+            ProjectileECS.RemoveEntity(this, ref type, index);
+        }
+    }
+
+    public static void DirectionalMovement(GameObject gameObject, Vector2 direction, float speed)
+    {
+        gameObject.transform.position += (Vector3)(direction * speed);
+    }
+
+    public void ProjectileMovements(in ProjectileECS.EntityType type, in int index)
+    {
+        DirectionalMovement(entityGameObjects[index], projectileDirections[index], type.entityData.speed);
+    }
+}
+
+// PROJECTILE TYPE > Data Definition
+public readonly struct ProjectileData
+{
+    public ProjectileData(int damage, float speed) // int capabilityMask = 0
+    {
+        this.damage = damage;
+        this.speed = speed;
+
+        // this.capabilityMask = capabilityMask;
+        // dataIndex = new int[(int)EnemyManager.Capability._Count]; // TODO : Set size = Last capacity index
+        // dataOffsets = new int[(int)EnemyManager.Capability._Count];
+    }
+
+    // DEFAULT STATS
+    public readonly int damage;
+    public readonly float speed;
+
+    // ADDITIONAL STATS > Modifiers Later
+    // public readonly int capabilityMask; // Bitmask
+    // public readonly int[] dataIndex; // Authoring array // Sparse? index = Capability -> For
+    // public readonly int[] dataOffsets; // Runtime array
 }
