@@ -346,17 +346,17 @@ MonoBehaviour:
   - {fileID: 1825652706}
   - {fileID: 1809006444}
   spawnDelta: 0.5
-  minEnemies: 10
-  enemiesRange: 10
   enemiesDirection: {x: 0, y: -1}
   scoutPrefab: {fileID: 1109584972715861884, guid: 695882dc75390dd4c850f6797e94b847, type: 3}
+  minEnemies: 10
+  enemiesRange: 10
   scoutHp: 10
   scoutDamage: 10
   scoutSpeed: 0.05
   frigatePrefab: {fileID: 3573185778410337754, guid: a5bb01503d4b48e4eba80fbba96ce40c, type: 3}
   frigateHp: 30
   frigateArmor: 1
-  frigateShield: 1
+  frigateShield: 10
   frigateDamage: 20
   frigateSpeed: 0.02
 --- !u!4 &468634549
@@ -847,6 +847,8 @@ MonoBehaviour:
   laserPrefab: {fileID: 5160333836033800714, guid: d2e82e1ac42683f418873b718a757fcb, type: 3}
   laserDamage: 10
   laserSpeed: 0.3
+  verticalLimit: 0
+  horizontalLimit: 0
 --- !u!4 &1220552732
 Transform:
   m_ObjectHideFlags: 0

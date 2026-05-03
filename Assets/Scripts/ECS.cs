@@ -1,23 +1,10 @@
-using System;
 using UnityEngine;
 
 // Rosaure ECS
-public class ECS<TData, TState> where TState : IECSState // where T2 : struct, Enum
+public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
 {
-    public readonly struct EntityContext
-    {
-        public readonly int index;
-        public readonly EntityType type;
-
-        public EntityContext(int index, EntityType type)
-        {
-            this.index = index;
-            this.type = type;
-        }
-    }
-
-    public delegate void EntityLogic(in EntityContext ctx, TState worldState);
-    public delegate void RemoveLogic(in EntityContext ctx, TState worldState, in int lastIndex);
+    public delegate void EntityLogic(ref EntityType type, in int index);
+    public delegate void RemoveLogic(in EntityType type, in int index, in int lastIndex);
 
     public struct EntityType
     {
@@ -25,7 +12,6 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
         EntityLogic spawnLogic, RemoveLogic removeLogic, EntityLogic updateLogic)
         {
             this.type = type;
-            // typeAsInt = System.Runtime.CompilerServices.Unsafe.As<T2, int>(ref type);
             startIndex = 0;
             this.maxEntities = maxEntities;
             activeCount = 0;
@@ -49,19 +35,17 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
         public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
     }
 
-    public EntityType[] entityTypes;
-
-    // Default Dynamic Arrays -> Length = MaxEntities
-    public int[] versions;
-    public GameObject[] entityGameObjects;
-
-    public void Init(GameObject holder, EntityType[] entityTypes, int totalEntity)
+    public interface IECSState
     {
-        this.entityTypes = entityTypes;
+        // ECS Core data
+        public EntityType[] entityTypes { get; set; }
+        public GameObject[] entityGameObjects { get; set; }
+        public int[] versions { get; set; }
+    }
 
-        // Create Dynamic Arrays
-        entityGameObjects = new GameObject[totalEntity];
-        versions = new int[totalEntity];
+    public static void Init(TState state, in GameObject holder)
+    {
+        var entityTypes = state.entityTypes;
 
         // Instantiate/Setup GameObjects
         int totalEntityCount = 0;
@@ -80,7 +64,7 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
                     entity.index = index;
                 }
 
-                entityGameObjects[index] = spawnedPrefab;
+                state.entityGameObjects[index] = spawnedPrefab;
             }
 
             entityTypes[i].startIndex = totalEntityCount;
@@ -88,9 +72,9 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
         }
     }
 
-    public GameObject SpawnEntityType(int type, TState state)
+    public static GameObject SpawnEntityType(TState state, in int type)
     {
-        ref EntityType entityType = ref FindEntityType(type);
+        ref EntityType entityType = ref state.entityTypes[type];
 
         if (entityType.activeCount >= entityType.maxEntities)
         {
@@ -100,20 +84,16 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
 
         // Spawn Next
         int spawnIndex = entityType.startIndex + entityType.activeCount;
-        GameObject spawnedEnemy = entityGameObjects[spawnIndex];
+        GameObject spawnedEnemy = state.entityGameObjects[spawnIndex];
         spawnedEnemy.SetActive(true);
 
-        versions[spawnIndex]++;
-
-        if (entityType.spawnLogic != null)
-        {
-            entityType.spawnLogic(new EntityContext(spawnIndex, entityType), state); // Additional SpawnLogic
-        }
+        // Custom Spawn Logic
+        entityType.spawnLogic(ref entityType, spawnIndex);
 
         if (spawnedEnemy.TryGetComponent(out Entity entity))
         {
             entity.index = spawnIndex;
-            entity.version = versions[spawnIndex];
+            entity.version = state.versions[spawnIndex];
         }
 
         entityType.activeCount++;
@@ -123,20 +103,23 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
         return spawnedEnemy;
     }
 
-    public void RemoveEntity(int indexToRemove, TState state)
+    public static void RemoveEntity(TState state, ref EntityType entityType, int indexToRemove) // ref
     {
-        ref EntityType entityType = ref IndexToEntityType(indexToRemove);
+        GameObject[] entityGameObjects = state.entityGameObjects;
 
         GameObject removedEnemy = entityGameObjects[indexToRemove];
         removedEnemy.SetActive(false);
 
         // Update Version
-        versions[indexToRemove]++;
+        state.versions[indexToRemove]++;
         entityType.activeCount--;
 
         int lastEntityIndex = entityType.startIndex + entityType.activeCount;
 
-        // Debug.Log($"REMOVE {entityType.type} Entity at Index = {indexToRemove}, REPLACE Last Index = {lastEntityIndex}");
+        // if (indexToRemove > lastEntityIndex)
+        // {
+        //     Debug.LogError($"REMOVE Entity type = {entityType} at Index = {indexToRemove}, REPLACE Last Index = {lastEntityIndex}");
+        // }
 
         if (indexToRemove != lastEntityIndex)
         {
@@ -146,54 +129,36 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
 
             // Move Data : Last Object -> Removed Index
             entityGameObjects[indexToRemove] = movedEnemy;
-            entityType.removeLogic(new EntityContext(indexToRemove, entityType), state, lastEntityIndex);
+
+            // Custom Remove Logic
+            entityType.removeLogic(in entityType, indexToRemove, lastEntityIndex);
 
             // Update Entity
             if (movedEnemy.TryGetComponent(out Entity entity))
             {
                 entity.index = indexToRemove;
-                entity.version = versions[indexToRemove];
+                entity.version = state.versions[indexToRemove];
             }
         }
     }
 
-    public void EntitiesUpdateLogic(TState state)
+    public static void EntitiesUpdateLogic(TState state)
     {
-        foreach (EntityType entityType in entityTypes)
+        for (int i = 0; i < state.entityTypes.Length; i++)
         {
-            for (int i = entityType.startIndex; i < entityType.startIndex + entityType.activeCount; i++)
+            ref var entityType = ref state.entityTypes[i];
+            for (int j = entityType.startIndex; j < entityType.startIndex + entityType.activeCount; j++)
             {
-                entityType.updateLogic(new EntityContext(i, entityType), state);
+                entityType.updateLogic(ref entityType, j);
             }
         }
     }
 
     // UTILS
-    public ref EntityType FindEntityType(int type)
+    public static ref EntityType IndexToEntityType(in TState state, int index)
     {
-        int typeIndex = 0;
-        EntityType currentType = entityTypes[typeIndex];
+        var entityTypes = state.entityTypes;
 
-        while (currentType.type != type)// (EqualityComparer<T2>.Default.Equals(currentType.type, type)) // (currentType.type != type)
-        {
-            typeIndex++;
-
-            // Exit loop if type not found
-            if (typeIndex >= entityTypes.Length)
-            {
-                Debug.LogError("Type Not Found");
-                return ref entityTypes[typeIndex];
-            }
-
-            currentType = entityTypes[typeIndex];
-        }
-
-        // Debug.Log($"FIND ENTITY TYPE : EnemyType = {type} -> EntityType = {currentType}");
-        return ref entityTypes[typeIndex];
-    }
-
-    public ref EntityType IndexToEntityType(int index)
-    {
         int typeIndex = 0;
         EntityType currentType = entityTypes[typeIndex];
 
@@ -214,10 +179,4 @@ public class ECS<TData, TState> where TState : IECSState // where T2 : struct, E
         // Debug.Log($"INDEX TO ENTITY : index = {index} -> EntityType = {currentType}");
         return ref entityTypes[typeIndex]; ;
     }
-}
-
-public interface IECSState
-{
-    public GameObject[] entityGameObjects {get;}
-    // versions
 }

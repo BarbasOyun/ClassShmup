@@ -10,6 +10,9 @@ public class ProjectileManager : MonoBehaviour
     public int laserDamage = 10;
     public float laserSpeed = 0.3f;
 
+    public float verticalLimit;
+    public float horizontalLimit;
+
     // Laser ECS
     int maxProjectile = 500;
     int activeCount = 0;
@@ -135,8 +138,8 @@ public class ProjectileManager : MonoBehaviour
     void LaserMovements()
     {
         // Cleanup Lasers out of frame
-        float verticalLimit = Camera.main.orthographicSize;
-        float horizontalLimit = Camera.main.orthographicSize * Screen.width / Screen.height;
+        verticalLimit = Camera.main.orthographicSize;
+        horizontalLimit = Camera.main.orthographicSize * Screen.width / Screen.height;
 
         for (int i = 0; i < activeCount; i++)
         {

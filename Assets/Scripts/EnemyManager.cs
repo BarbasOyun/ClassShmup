@@ -1,19 +1,16 @@
 using System;
+using System.Linq;
 using UnityEngine;
 
-public class EnemyManager : MonoBehaviour
+public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
 {
     // TODO : Use Service Locator
+    // TODO : use partial class
     public static EnemyManager instance;
-
-    public enum EnemyType { Scout, Frigate }
-    public enum Capability { Armor = 0, Shield = 1, _Count = 2 }
 
     [Header("ENEMY SPAWNER")]
     public GameObject[] spawnLocations; // 3
     public float spawnDelta = 1f;
-    public int minEnemies = 2;
-    public int enemiesRange = 2;
     public Vector2 enemiesDirection;
     float angle;
     Quaternion lookDirection;
@@ -22,6 +19,8 @@ public class EnemyManager : MonoBehaviour
     // TODO : Game Engine Agnostic = Move to file, Unity = ScriptableObject
     [Header("ENEMY - Scout")]
     public GameObject scoutPrefab;
+    public int minEnemies = 2;
+    public int enemiesRange = 2;
     public int scoutHp = 10;
     public int scoutDamage = 10;
     public float scoutSpeed = 0.1f;
@@ -35,72 +34,28 @@ public class EnemyManager : MonoBehaviour
     public float frigateSpeed = 0.05f;
 
     // [Header("ECS")]
-    public class EnemyECS : ECS<UnitData, SystemState> { }
-    public EnemyECS ecs;
-    public delegate int DamageModifier(EnemyECS.EntityContext ctx, SystemState state, int dmg);
+    public class EnemyECS : ECS<UnitData, EnemyManager> { }
 
-    // Old
-    delegate void EntityHandler(EntityContext ctx);
-    delegate void TakeDamageLogic(EntityContext ctx, int dmg);
-
-    readonly struct EntityContext
+    public enum EnemyType { Scout, Frigate, _Count }
+    public enum Capability
     {
-        public readonly int index;
-        public readonly EntityType type;
-
-        public EntityContext(int index, EntityType type)
-        {
-            this.index = index;
-            this.type = type;
-        }
+        Armor,
+        Shield,
+        _Count,
     }
 
-    struct EntityType
-    {
-        public EntityType(EnemyType type, int maxEntities, GameObject prefab, UnitData unitData, EntityHandler spawnLogic, EntityHandler updateLogic, TakeDamageLogic takeDamageLogic)
-        {
-            this.type = type;
-            typeAsInt = (int)type;
-            startIndex = 0;
-            this.maxEntities = maxEntities;
-            activeCount = 0;
-            this.prefab = prefab;
-            this.unitData = unitData;
-            this.spawnLogic = spawnLogic;
-            this.updateLogic = updateLogic;
-            this.takeDamageLogic = takeDamageLogic;
-        }
+    public EnemyECS.EntityType[] entityTypes { get; set; }
+    public GameObject[] entityGameObjects { get; set; }
+    public int[] versions { get; set; }
+    // Custom fields
+    public int[] enemyHps;
+    // Entity Status (Timer)
 
-        public EnemyType type;
-        public int typeAsInt;
-        public int startIndex;
-        public int maxEntities;
-        public int activeCount;
-        public GameObject prefab;
-        public UnitData unitData;
-        public EntityHandler spawnLogic;
-        public EntityHandler updateLogic;
-        public TakeDamageLogic takeDamageLogic;
-
-        public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
-    }
-
-    EnemyDataRegistry enemyDataRegistry;
-    EnemyLogicRegistry enemyLogicRegistry;
-    EntityType[] entityTypes;
-
-    // Default Dynamic Arrays -> Length = MaxEntities
-    int[] versions;
-    GameObject[] enemyGameObjects;
-    int[] enemyHps;
-
-    // Type Dynamic Arrays -> Length Vary
-    // Use Sparse Set/Array for Data in Update Or
-    // Use IndexDelta -> Index - EntityType.StartIndex
-    // Types have to be organised e.g. Shield1, Shield2, Shield3 + Armor1, Armor2 + Movement1
-    int[] enemyShields;
-    // Modifiers
+    // Type arrays -> Length Vary
+    public int[] enemyShields;
     // StateMachines
+
+    public EnemyDataRegistry dataRegistry;
 
     void Awake()
     {
@@ -113,7 +68,6 @@ public class EnemyManager : MonoBehaviour
         angle = Mathf.Atan2(enemiesDirection.y, enemiesDirection.x) * Mathf.Rad2Deg - 90;
         lookDirection = Quaternion.Euler(0, 0, angle);
 
-        // InitECS();
         InitEntityType();
     }
 
@@ -124,9 +78,7 @@ public class EnemyManager : MonoBehaviour
 
     void FixedUpdate()
     {
-        // EntitiesUpdateLogic();
-
-        ecs.EntitiesUpdateLogic(CaptureState());
+        EnemyECS.EntitiesUpdateLogic(this);
     }
 
     void Update()
@@ -139,420 +91,260 @@ public class EnemyManager : MonoBehaviour
     {
         // Spawn Scout
         int enemiesNbrRoll = UnityEngine.Random.Range(minEnemies, minEnemies + enemiesRange);
-        SystemState state = CaptureState();
 
         for (int i = 0; i < enemiesNbrRoll; i++)
         {
-            // GameObject spawnedEnemy = SpawnEnemyType(EnemyType.Scout);
-            GameObject spawnedEnemy = ecs.SpawnEntityType(0, state);
-
-            if (!spawnedEnemy) return;
-
-            SetEnemyTransform(spawnedEnemy);
+            SetEnemyTransform(EnemyECS.SpawnEntityType(this, (int)EnemyType.Scout));
         }
 
         // Spawn Frigate
-        // SetEnemyTransform(SpawnEnemyType(EnemyType.Frigate));
-        SetEnemyTransform(ecs.SpawnEntityType((int)EnemyType.Frigate, state));
+        SetEnemyTransform(EnemyECS.SpawnEntityType(this, (int)EnemyType.Frigate));
     }
 
     void SetEnemyTransform(GameObject enemy)
     {
+        if (!enemy) return;
+
         enemy.transform.rotation = lookDirection;
-        int locationOffset = (int)UnityEngine.Random.Range(spawnLocations[1].transform.position.x, spawnLocations[2].transform.position.x);
-        enemy.transform.position = spawnLocations[0].transform.position + new Vector3(locationOffset, 0);
+        float xOffset = UnityEngine.Random.Range(spawnLocations[1].transform.position.x, spawnLocations[2].transform.position.x);
+        float yOffset = UnityEngine.Random.Range(0, 2);
+        enemy.transform.position = spawnLocations[0].transform.position + new Vector3(xOffset, yOffset);
     }
 
     // ECS Implementation
-    void InitECS()
+    void InitEntityType()
     {
-        int[] additionalData = null; // InitEntityType();
+        // TODO : int totalShieldType = iterate over entityTypes
+        // List<EnemyECS.EntityType> typeList = new List<ECS<UnitData, EnemySystemState>.EntityType>();
 
-        // Create Dynamic Arrays
-        int totalEntity = 0;
-
-        foreach (EntityType entityType in entityTypes)
-        {
-            totalEntity += entityType.maxEntities;
-        }
-
-        enemyGameObjects = new GameObject[totalEntity];
-        versions = new int[totalEntity];
-        enemyHps = new int[totalEntity];
-        enemyShields = new int[additionalData[0]];
-
-        // Instantiate/Setup GameObjects
-        int totalEntityCount = 0;
-
-        for (int i = 0; i < entityTypes.Length; i++)
-        {
-            for (int j = 0; j < entityTypes[i].maxEntities; j++)
-            {
-                GameObject spawnedPrefab = Instantiate(entityTypes[i].prefab, transform);
-                spawnedPrefab.SetActive(false);
-
-                int index = totalEntityCount + j;
-
-                if (spawnedPrefab.TryGetComponent(out Entity entity))
-                {
-                    entity.index = index;
-                }
-
-                enemyGameObjects[index] = spawnedPrefab;
-            }
-
-            entityTypes[i].startIndex = totalEntityCount;
-            totalEntityCount += entityTypes[i].maxEntities;
-        }
-    }
-
-    void InitEntityType() //int[]
-    {
-        // Bake Entity Types
-        // ENTITY TYPE > LOGIC DEFINITION
-        // + Where to get Data
-
-        enemyDataRegistry = new EnemyDataRegistry(
+        var dataRegistry = new EnemyDataRegistry(
             armorDataCount: 1,
             shieldDataCount: 1
-            );
-        enemyLogicRegistry = new EnemyLogicRegistry();
+        );
 
-        int maxScout = 300;
-        int maxFrigate = 250;
-        int totalEntity = maxScout + maxFrigate;
+        int[] typeCount = new int[(int)EnemyType._Count];
+        typeCount[(int)EnemyType.Scout] = 300;
+        typeCount[(int)EnemyType.Frigate] = 250;
+        int totalEntity = typeCount.Sum();
 
         // CREATE Types
-        // entityTypes = new[] {
-        //     new EntityType(EnemyType.Scout, 250, scoutPrefab, scoutData, null, scoutUpdate, scoutDamageLogic),
-        //     new EntityType(EnemyType.Frigate, maxFrigate, frigatePrefab, frigateData, frigateSpawn, frigateUpdate, frigateDamageLogic)
-        //     };
-
-        EnemyECS.EntityType[] entityTypes = new[] {
-            ScoutType(maxScout),
-            FrigateType(maxFrigate),
+        entityTypes = new[] {
+            ScoutType(typeCount[(int)EnemyType.Scout]),
+            FrigateType(typeCount, dataRegistry),
             };
 
-        // return new int[] { maxFrigate }; // Return Data to Create Dense Arrays
-
+        // CREATE Runtime arrays
+        this.dataRegistry = dataRegistry;
+        entityGameObjects = new GameObject[totalEntity];
+        versions = new int[totalEntity];
         enemyHps = new int[totalEntity];
-        enemyShields = new int[maxFrigate];
+        enemyShields = new int[typeCount[(int)EnemyType.Frigate]];
 
-        ecs = new EnemyECS();
-        ecs.Init(gameObject, entityTypes, totalEntity);
+        EnemyECS.Init(this, gameObject);
     }
 
     EnemyECS.EntityType ScoutType(int maxScout)
     {
+        void ScoutUpdate(ref EnemyECS.EntityType type, in int index)
+        {
+            RemoveOutOfBound(ref type, index);
+            Straight(in type, in index);
+        }
+
         UnitData scoutData = new UnitData(scoutHp, scoutDamage, scoutSpeed);
-
-        // EnemyECS.EntityLogic scoutUpdate = (ctx) => StraightMovement(enemyGameObjects[ctx.index], ctx.type.entityData.speed);
-        EnemyECS.EntityLogic scoutUpdate = Straight;
-        // TakeDamageLogic scoutDamageLogic = (ctx, dmg) => enemyHps[ctx.index] -= dmg;
-
-        // return new EntityType(EnemyType.Scout, 250, scoutPrefab, scoutData, null, scoutUpdate, scoutDamageLogic);
-        return new EnemyECS.EntityType(0, maxScout, scoutPrefab, scoutData, CommonSpawnLogic, CommonRemoveLogic, scoutUpdate);
+        return new EnemyECS.EntityType(
+            (int)EnemyType.Scout,
+            maxScout,
+            scoutPrefab,
+            scoutData,
+            SpawnLogic,
+            RemoveLogic,
+            ScoutUpdate
+        );
     }
 
-    EnemyECS.EntityType FrigateType(int maxFrigate)
+    EnemyECS.EntityType FrigateType(int[] typeCount, EnemyDataRegistry dataRegistry)
     {
-        enemyDataRegistry.armorData[0] = new ArmorData(frigateArmor); // Register Additional Data (Armor)
-        enemyDataRegistry.shieldData[0] = new ShieldData(frigateShield);
-        UnitData frigateData = new UnitData(frigateHp, frigateDamage, frigateSpeed, new int[] { 0, 0 }); // First element = index for Registered Armor
+        void FrigateUpdate(ref EnemyECS.EntityType type, in int index)
+        {
+            RemoveOutOfBound(ref type, index);
+            Oscilating(in type, in index);
+        }
 
-        // EnemyECS.EntityLogic frigateSpawn = (ctx) => enemyShields[ctx.index - ctx.type.startIndex] = enemyDataRegistry.shieldData[frigateData.additionalData[1]].shield;
-        EnemyECS.EntityLogic frigateSpawn = SetShield; // Events System?
-        EnemyECS.EntityLogic frigateUpdate = Oscilating;
-        // TakeDamageLogic frigateDamageLogic = (ctx, dmg) =>
-        // {
-        //     int shield = enemyShields[ctx.index - ctx.type.startIndex];
-        //     int armor = enemyDataRegistry.armorData[frigateData.additionalData[0]].armor;
-        //     ArmorAndShield(ref enemyHps[ctx.index], armor, ref shield, dmg);
-        // };
+        int maxFrigate = typeCount[(int)EnemyType.Frigate];
 
-        // return new EntityType(EnemyType.Frigate, maxFrigate, frigatePrefab, frigateData, frigateSpawn, frigateUpdate, frigateDamageLogic);
-        return new EnemyECS.EntityType(1, maxFrigate, frigatePrefab, frigateData, frigateSpawn, CommonRemoveLogic, frigateUpdate);
+        // TODO : Count types without armor/shield
+
+        // Register Additional Data (Armor + Shield)
+        // TODO : index = typeIndex - noShieldType
+        dataRegistry.armorData[0] = new ArmorData(frigateArmor);
+        dataRegistry.shieldData[0] = new ShieldData(frigateShield);
+
+        int capabilities = (1 << (int)Capability.Armor) | (1 << (int)Capability.Shield); // Shield and Armor
+        UnitData frigateData = new UnitData(frigateHp, frigateDamage, frigateSpeed, capabilities); // First element = index for Registered Armor
+
+        // Authoring Data
+        frigateData.dataIndex[(int)Capability.Armor] = 0;
+        frigateData.dataIndex[(int)Capability.Shield] = 0; // typeIndex - noShieldType
+
+        // Runtime Data
+        // frigateData.dataOffsets[(int)Capability.Armor] = typeCount[(int)EnemyType.Scout]; // Later use Runtime armor
+        frigateData.dataOffsets[(int)Capability.Shield] = typeCount[(int)EnemyType.Scout];
+
+        return new EnemyECS.EntityType(
+            (int)EnemyType.Frigate,
+            maxFrigate,
+            frigatePrefab,
+            frigateData,
+            SpawnLogic,
+            RemoveLogic,
+            FrigateUpdate
+            );
     }
 
-    public GameObject SpawnEnemyType(EnemyType type)
-    {
-        ref EntityType entityType = ref FindEntityType(type);
-
-        if (entityType.activeCount >= entityType.maxEntities)
-        {
-            Debug.LogWarning($"Max Entities Reached on : {entityType}");
-            return null;
-        }
-
-        // Spawn Next
-        int spawnIndex = entityType.startIndex + entityType.activeCount;
-        GameObject spawnedEnemy = enemyGameObjects[spawnIndex];
-        spawnedEnemy.SetActive(true);
-
-        versions[spawnIndex]++;
-        enemyHps[spawnIndex] = entityType.unitData.hp;
-
-        if (entityType.spawnLogic != null)
-        {
-            entityType.spawnLogic(new EntityContext(spawnIndex, entityType)); // Additional SpawnLogic
-        }
-
-        if (spawnedEnemy.TryGetComponent(out Entity entity))
-        {
-            entity.index = spawnIndex;
-            entity.version = versions[spawnIndex];
-        }
-
-        entityType.activeCount++;
-
-        // Debug.Log($"Spawned {entityType.type} HP = {enemyHps[spawnIndex]}");
-
-        return spawnedEnemy;
-    }
-
-    public void RemoveEnemy(int indexToRemove)
-    {
-        ref EntityType entityType = ref IndexToEntityType(indexToRemove);
-
-        GameObject removedEnemy = enemyGameObjects[indexToRemove];
-        removedEnemy.SetActive(false);
-
-        // Update Version
-        versions[indexToRemove]++;
-        entityType.activeCount--;
-
-        int lastEntityIndex = entityType.startIndex + entityType.activeCount;
-
-        // Debug.Log($"REMOVE {entityType.type} Entity at Index = {indexToRemove}, REPLACE Last Index = {lastEntityIndex}");
-
-        if (indexToRemove != lastEntityIndex)
-        {
-            // Swap GameObjects
-            GameObject movedEnemy = enemyGameObjects[lastEntityIndex];
-            enemyGameObjects[lastEntityIndex] = removedEnemy;
-
-            // Move Data : Last Object -> Removed Index
-            enemyHps[indexToRemove] = enemyHps[lastEntityIndex];
-            enemyGameObjects[indexToRemove] = movedEnemy;
-
-            // Update Entity
-            if (movedEnemy.TryGetComponent(out Entity entity))
-            {
-                entity.index = indexToRemove;
-                entity.version = versions[indexToRemove];
-            }
-        }
-    }
-
-    void EntitiesUpdateLogic()
-    {
-        float horizontalLimit = (Camera.main.orthographicSize * Screen.width / Screen.height) + 5;
-        float verticalLimit = Camera.main.orthographicSize + 5;
-
-        foreach (EntityType entityType in entityTypes)
-        {
-            for (int i = entityType.startIndex; i < entityType.startIndex + entityType.activeCount; i++)
-            {
-                // Cleanup Enemies out of frame
-                if (ProjectileManager.instance.IsOutOfBond(enemyGameObjects[i].transform.position,
-                horizontalLimit, verticalLimit))
-                {
-                    // Remove Life
-                    RemoveEnemy(i);
-                }
-
-                entityType.updateLogic(new EntityContext(i, entityType));
-            }
-        }
-    }
 
     public void ApplyDamage(int index, int version, int dmg)
     {
-        // if (versions[index] != version)
-        // {
-        //     Debug.LogWarning("Wrong Version");
-        //     return;
-        // }
-
-        // EntityType entityType = IndexToEntityType(index);
-        // entityType.takeDamageLogic(new EntityContext(index, entityType), dmg);
-
-        // if (enemyHps[index] <= 0)
-        // {
-        //     RemoveEnemy(index);
-        // }
-
-        SystemState state = CaptureState();
-
-        if (state.versions[index] != version)
+        if (versions[index] != version)
         {
             Debug.LogWarning("Wrong Version");
             return;
         }
 
-        EnemyECS.EntityType entityType = ecs.IndexToEntityType(index);
-        int resultDmg = enemyLogicRegistry.takeDamageLogics[entityType.type](new EnemyECS.EntityContext(index, entityType), state, dmg);
-        state.enemyHps[index] -= resultDmg;
+        ref EnemyECS.EntityType entityType = ref EnemyECS.IndexToEntityType(this, index);
+        enemyHps[index] -= DamageModifiers(entityType, index, dmg);
 
-        if (state.enemyHps[index] <= 0)
+        if (enemyHps[index] <= 0)
         {
-            ecs.RemoveEntity(index, state);
+            EnemyECS.RemoveEntity(this, ref entityType, index);
         }
-    }
-
-    // UTILS
-    SystemState CaptureState()
-    {
-        return new SystemState(ecs.entityGameObjects, ecs.versions, enemyHps, enemyShields, enemyDataRegistry);
-    }
-
-    ref EntityType FindEntityType(EnemyType type)
-    {
-        int typeIndex = 0;
-        EntityType currentType = entityTypes[typeIndex];
-
-        while (currentType.type != type)
-        {
-            typeIndex++;
-
-            // Exit loop if type not found
-            if (typeIndex >= entityTypes.Length)
-            {
-                Debug.LogError("Type Not Found");
-                return ref entityTypes[typeIndex];
-            }
-
-            currentType = entityTypes[typeIndex];
-        }
-
-        // Debug.Log($"FIND ENTITY TYPE : EnemyType = {type} -> EntityType = {currentType}");
-        return ref entityTypes[typeIndex];
-    }
-
-    ref EntityType IndexToEntityType(int index)
-    {
-        int typeIndex = 0;
-        EntityType currentType = entityTypes[typeIndex];
-
-        while (index < currentType.startIndex || currentType.startIndex + currentType.maxEntities - 1 < index)
-        {
-            typeIndex++;
-
-            // Exit loop if type not found
-            if (typeIndex >= entityTypes.Length)
-            {
-                Debug.LogError("Type Not Found");
-                return ref entityTypes[typeIndex];
-            }
-
-            currentType = entityTypes[typeIndex];
-        }
-
-        // Debug.Log($"INDEX TO ENTITY : index = {index} -> EntityType = {currentType}");
-        return ref entityTypes[typeIndex]; ;
     }
 
     // ENEMY LOGIC
-    void ArmorAndShield(ref int hp, int armor, ref int shield, int dmg)
+    public void SpawnLogic(ref EnemyECS.EntityType type, in int index)
     {
-        hp -= ArmorLogic(armor, ShieldLogic(ref shield, dmg));
+        var entityData = type.entityData;
+        enemyHps[index] = entityData.hp;
+
+        // Shield -> Set Runtime array using Authoring array
+        if ((entityData.capabilityMask & (1 << (int)Capability.Shield)) != 0)
+        {
+            int i = entityData.dataIndex[(int)Capability.Shield];
+            int offset = entityData.dataOffsets[(int)Capability.Shield];
+            enemyShields[index - offset] = dataRegistry.shieldData[i].shield;
+        }
     }
 
-    int ArmorLogic(int armor, int dmg)
+    public void RemoveLogic(in EnemyECS.EntityType type, in int index, in int originalIndex)
+    {
+        var entityData = type.entityData;
+        enemyHps[index] = enemyHps[originalIndex];
+
+        // Shield
+        if ((entityData.capabilityMask & (1 << (int)Capability.Shield)) != 0)
+        {
+            int offset = entityData.dataOffsets[(int)Capability.Shield];
+            enemyShields[index - offset] = enemyShields[originalIndex - offset];
+        }
+    }
+
+    // Update Logics
+    public void RemoveOutOfBound(ref EnemyECS.EntityType type, in int index)
+    {
+        var projInstance = ProjectileManager.instance;
+        if (projInstance.IsOutOfBond(entityGameObjects[index].transform.position, projInstance.horizontalLimit + 5, projInstance.verticalLimit + 5))
+        {
+            // Remove Player Life
+            EnemyECS.RemoveEntity(this, ref type, index);
+        }
+    }
+
+    public static void StraightMovement(GameObject entityBody, float speed)
+    {
+        entityBody.transform.position += entityBody.transform.up * speed;
+    }
+
+    static void OscilatingMovement(GameObject entityBody, float speed)
+    {
+        entityBody.transform.position += (entityBody.transform.right * (float)Math.Sin(Time.time) + entityBody.transform.up) * speed;
+    }
+
+    public void Straight(in EnemyECS.EntityType type, in int index)
+    {
+        StraightMovement(entityGameObjects[index], type.entityData.speed);
+    }
+
+    public void Oscilating(in EnemyECS.EntityType type, in int index)
+    {
+        OscilatingMovement(entityGameObjects[index], type.entityData.speed);
+    }
+
+    // Damage Taken Logics
+    int DamageModifiers(in EnemyECS.EntityType type, in int index, int dmg)
+    {
+        int finalDamage = dmg;
+        var entityData = type.entityData;
+
+        // Shield -> Use Runtime array
+        if ((entityData.capabilityMask & (1 << (int)Capability.Shield)) != 0)
+        {
+            int delta = entityData.dataOffsets[(int)Capability.Shield];
+            finalDamage = ShieldLogic(finalDamage, ref enemyShields[index - delta]);
+        }
+
+        // Armor -> Use Authoring array
+        if ((entityData.capabilityMask & (1 << (int)Capability.Armor)) != 0)
+        {
+            int i = type.entityData.dataIndex[(int)Capability.Armor];
+            // int delta = entityData.dataOffsets[(int)Capability.Armor]; // Use Runtime array Later
+            finalDamage = ArmorLogic(finalDamage, ref dataRegistry.armorData[i].armor);
+        }
+
+        return finalDamage;
+    }
+
+    int ArmorLogic(int dmg, ref int armor)
     {
         int mitigatedDamage = dmg - armor;
         // Debug.Log($"{armor} ARMOR -> DMG = {dmg} -> {mitigatedDamage}");
         return mitigatedDamage;
     }
 
-    int ShieldLogic(ref int shield, int dmg)
+    int ShieldLogic(int dmg, ref int shield)
     {
-        int mitigatedDamage = dmg - shield;
+        // Debug.Log($"SHIELD START -> dmg = {dmg}, shield = {shield}");
+        int mitigatedDamage = Math.Max(0, dmg - shield);
+        shield = Math.Max(shield - dmg, 0);
 
-        int delta = shield - mitigatedDamage;
-        shield = Math.Min(delta, 0);
-        mitigatedDamage = Math.Sign(delta) == -1 ? Math.Abs(delta) : 0;
-        // Debug.Log($"{shield} SHIELD -> DMG = {dmg} -> {mitigatedDamage}");
+        // Debug.Log($"SHIELD END -> dmg = {mitigatedDamage}, shield = {shield}");
         return mitigatedDamage;
     }
-
-    void StraightMovement(GameObject entityBody, float speed)
-    {
-        entityBody.transform.position += entityBody.transform.up * speed;
-    }
-
-    void OscilatingMovement(GameObject entityBody, float speed)
-    {
-        entityBody.transform.position += (entityBody.transform.right * (float)Math.Sin(Time.time) + entityBody.transform.up) * speed;
-    }
-
-    // ENTITY WRAPPER
-    public void Straight(in EnemyECS.EntityContext ctx, SystemState state)
-    {
-        StraightMovement(state.entityGameObjects[ctx.index], ctx.type.entityData.speed); // Movement Interface?
-    }
-
-    public void Oscilating(in EnemyECS.EntityContext ctx, SystemState state)
-    {
-        OscilatingMovement(state.entityGameObjects[ctx.index], ctx.type.entityData.speed);
-    }
-
-    public void SetShield(in EnemyECS.EntityContext ctx, SystemState state)
-    {
-        state.enemyShields[ctx.index - ctx.type.startIndex] = state.dataRegistry.shieldData[ctx.type.entityData.additionalData[1]].shield; // ctx.type.frigateData.additionalData[1]
-    }
-
-    public void CommonSpawnLogic(in EnemyECS.EntityContext ctx, SystemState state)
-    {
-        state.enemyHps[ctx.index] = ctx.type.entityData.hp;
-    }
-
-    public void CommonRemoveLogic(in EnemyECS.EntityContext ctx, SystemState state, in int originalIndex)
-    {
-        state.enemyHps[ctx.index] = state.enemyHps[originalIndex];
-    }
-}
-
-public readonly struct SystemState : IECSState
-{
-    public SystemState(GameObject[] entityGameObjects, int[] versions, int[] enemyHps, int[] enemyShields, EnemyDataRegistry dataRegistry)
-    {
-        this.entityGameObjects = entityGameObjects;
-        this.versions = versions;
-        this.enemyHps = enemyHps;
-        this.enemyShields = enemyShields;
-        this.dataRegistry = dataRegistry;
-    }
-
-    public readonly GameObject[] entityGameObjects { get; }
-    public readonly int[] versions;
-    public readonly int[] enemyHps;
-    public readonly int[] enemyShields;
-    public readonly EnemyDataRegistry dataRegistry;
 }
 
 // ENTITY TYPE > DATA DEFINITION
-public struct UnitData
+public readonly struct UnitData
 {
-    public UnitData(int hp, int damage, float speed, int[] additionalData = null)
+    public UnitData(int hp, int damage, float speed, int capabilityMask = 0)
     {
         this.hp = hp;
         this.damage = damage;
         this.speed = speed;
-        this.additionalData = additionalData;
 
-        CapabilityMask = (1 << (int)EnemyManager.Capability.Shield) | (1 << (int)EnemyManager.Capability.Armor);
-        DataOffsets = new int[(int)EnemyManager.Capability._Count];
+        this.capabilityMask = capabilityMask;
+        dataIndex = new int[(int)EnemyManager.Capability._Count]; // TODO : Set size = Last capacity index
+        dataOffsets = new int[(int)EnemyManager.Capability._Count];
     }
 
+    // DEFAULT STATS
     // public readonly int maxHp;
     public readonly int hp;
     public readonly int damage;
     public readonly float speed;
-    public readonly int[] additionalData; // Sparse?
 
-    public readonly int CapabilityMask; // Bitmask
-    public readonly int[] DataOffsets;
+    // ADDITIONAL STATS
+    public readonly int capabilityMask; // Bitmask
+    public readonly int[] dataIndex; // Authoring array // Sparse? index = Capability -> For
+    public readonly int[] dataOffsets; // Runtime array
 }
 
 public struct ArmorData // Armor reduce flat Dmg
@@ -587,70 +379,5 @@ public class EnemyDataRegistry
     {
         armorData = new ArmorData[armorDataCount];
         shieldData = new ShieldData[shieldDataCount];
-    }
-}
-
-public class EnemyLogicRegistry
-{
-    public readonly EnemyManager.DamageModifier[] takeDamageLogics;
-
-    int TakeDamage(EnemyManager.EnemyECS.EntityContext ctx, SystemState state, int dmg)
-    {
-        int finalDamage = dmg;
-        var entityData = ctx.type.entityData;
-
-        if ((entityData.CapabilityMask & (1 << (int)EnemyManager.Capability.Shield)) != 0)
-        {
-            // 2. Only if the bit is on, look up the specific data offset
-            int dataIdx = entityData.DataOffsets[(int)EnemyManager.Capability.Shield];
-
-            // 3. Access the dense data registry
-            finalDamage = ShieldLogic(finalDamage, ref state.enemyShields[dataIdx + ctx.index]);
-        }
-
-        // Armor
-
-        return finalDamage;
-        // return dmg;
-    }
-
-    int ShieldLogic(int dmg, ref int shield)
-    {
-        int mitigatedDamage = dmg - shield;
-
-        int delta = shield - mitigatedDamage;
-        shield = Math.Min(delta, 0);
-        mitigatedDamage = Math.Sign(delta) == -1 ? Math.Abs(delta) : 0;
-        // Debug.Log($"{shield} SHIELD -> DMG = {dmg} -> {mitigatedDamage}");
-        return mitigatedDamage;
-    }
-
-    // int ShieldLogic(EnemyManager.EnemyECS.EntityContext ctx, SystemState state, int dmg)
-    // {
-    //     ref int shield = ref state.enemyShields[ctx.index - ctx.type.startIndex];
-    //     int mitigatedDamage = dmg - shield;
-
-    //     int delta = shield - mitigatedDamage;
-    //     shield = Math.Min(delta, 0);
-    //     mitigatedDamage = Math.Sign(delta) == -1 ? Math.Abs(delta) : 0;
-    //     // Debug.Log($"{shield} SHIELD -> DMG = {dmg} -> {mitigatedDamage}");
-    //     return mitigatedDamage;
-    // }
-
-    int ArmorLogic(EnemyManager.EnemyECS.EntityContext ctx, SystemState state, int dmg)
-    {
-        ref int armor = ref state.dataRegistry.armorData[ctx.type.type].armor;
-        int mitigatedDamage = dmg - armor;
-        // Debug.Log($"{armor} ARMOR -> DMG = {dmg} -> {mitigatedDamage}");
-        return mitigatedDamage;
-    }
-
-    public EnemyLogicRegistry()
-    {
-        takeDamageLogics = new EnemyManager.DamageModifier[]
-        {
-            TakeDamage,
-            TakeDamage,
-        };
     }
 }
