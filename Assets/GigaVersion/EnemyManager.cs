@@ -1,8 +1,12 @@
 using System;
 using System.Linq;
+using System.Text;
+using TMPro;
 using UnityEngine;
 
-public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
+public class EnemyECS : ECS<UnitData, EnemyManager> { }
+
+public class EnemyManager : MonoBehaviour, EnemyECS.IECSState
 {
     // TODO : Use Service Locator
     // TODO : use partial class
@@ -12,21 +16,29 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
     public GameObject[] spawnLocations; // 3
     public float spawnDelta = 1f;
     public Vector2 enemiesDirection;
-    float angle;
     Quaternion lookDirection;
+    public AudioSource explosionSound;
+    public TextMeshProUGUI scoreText;
+    public long score;
 
     // DATA SOURCE
     // TODO : Game Engine Agnostic = Move to file, Unity = ScriptableObject
     [Header("ENEMY - Scout")]
     public GameObject scoutPrefab;
-    public int minEnemies = 2;
-    public int enemiesRange = 2;
+    public int maxScout = 500;
+    public int minScout = 10;
+    public int scoutSpawnRange = 10;
+    public int scoutScore = 1;
     public int scoutHp = 10;
     public int scoutDamage = 10;
     public float scoutSpeed = 0.1f;
 
     [Header("ENEMY - Frigate")]
     public GameObject frigatePrefab;
+    public int maxFrigate = 200;
+    public int minFrigate = 1;
+    public int frigateSpawnRange = 1;
+    public int frigateScore = 3;
     public int frigateHp = 30;
     public int frigateArmor = 1;
     public int frigateShield = 10;
@@ -34,8 +46,6 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
     public float frigateSpeed = 0.05f;
 
     // [Header("ECS")]
-    public class EnemyECS : ECS<UnitData, EnemyManager> { }
-
     public enum EnemyType { Scout, Frigate, _Count }
     public enum Capability
     {
@@ -44,9 +54,11 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
         _Count,
     }
 
+    // IECSState Implementation
     public EnemyECS.EntityType[] entityTypes { get; set; }
     public GameObject[] entityGameObjects { get; set; }
     public int[] versions { get; set; }
+
     // Custom fields
     public int[] enemyHps;
     // Entity Status (Timer)
@@ -65,7 +77,7 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
             DontDestroyOnLoad(gameObject);
         }
 
-        angle = Mathf.Atan2(enemiesDirection.y, enemiesDirection.x) * Mathf.Rad2Deg - 90;
+        float angle = Mathf.Atan2(enemiesDirection.y, enemiesDirection.x) * Mathf.Rad2Deg - 90;
         lookDirection = Quaternion.Euler(0, 0, angle);
 
         InitEntityType();
@@ -74,6 +86,7 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
     void Start()
     {
         InvokeRepeating(nameof(SpawnEnemies), 1.0f, spawnDelta);
+        InvokeRepeating(nameof(IncrementEnemies), 1f, 15f);
     }
 
     void FixedUpdate()
@@ -90,15 +103,29 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
     void SpawnEnemies()
     {
         // Spawn Scout
-        int enemiesNbrRoll = UnityEngine.Random.Range(minEnemies, minEnemies + enemiesRange);
+        int scoutsRoll = UnityEngine.Random.Range(minScout, minScout + scoutSpawnRange);
 
-        for (int i = 0; i < enemiesNbrRoll; i++)
+        for (int i = 0; i < scoutsRoll; i++)
         {
             SetEnemyTransform(EnemyECS.SpawnEntityType(this, (int)EnemyType.Scout));
         }
 
         // Spawn Frigate
-        SetEnemyTransform(EnemyECS.SpawnEntityType(this, (int)EnemyType.Frigate));
+        int frigatesRoll = UnityEngine.Random.Range(minFrigate, minFrigate + frigateSpawnRange);
+
+        for (int i = 0; i < frigatesRoll; i++)
+        {
+            SetEnemyTransform(EnemyECS.SpawnEntityType(this, (int)EnemyType.Frigate));
+        }
+    }
+
+    void IncrementEnemies()
+    {
+        // Zoom out
+        minScout += 3;
+        scoutSpawnRange += 4;
+        minFrigate += 1;
+        frigateSpawnRange += 2;
     }
 
     void SetEnemyTransform(GameObject enemy)
@@ -123,8 +150,8 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
         );
 
         int[] typeCount = new int[(int)EnemyType._Count];
-        typeCount[(int)EnemyType.Scout] = 300;
-        typeCount[(int)EnemyType.Frigate] = 250;
+        typeCount[(int)EnemyType.Scout] = maxScout;
+        typeCount[(int)EnemyType.Frigate] = maxFrigate;
         int totalEntity = typeCount.Sum();
 
         // CREATE Types
@@ -145,13 +172,15 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
 
     EnemyECS.EntityType ScoutType(int maxScout)
     {
+        // Composition
         void ScoutUpdate(ref EnemyECS.EntityType type, in int index)
         {
             RemoveOutOfBound(ref type, index);
             Straight(in type, in index);
         }
 
-        UnitData scoutData = new UnitData(scoutHp, scoutDamage, scoutSpeed);
+        UnitData scoutData = new UnitData(scoutScore, scoutHp, scoutDamage, scoutSpeed);
+
         return new EnemyECS.EntityType(
             (int)EnemyType.Scout,
             maxScout,
@@ -181,7 +210,7 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
         dataRegistry.shieldData[0] = new ShieldData(frigateShield);
 
         int capabilities = (1 << (int)Capability.Armor) | (1 << (int)Capability.Shield); // Shield and Armor
-        UnitData frigateData = new UnitData(frigateHp, frigateDamage, frigateSpeed, capabilities); // First element = index for Registered Armor
+        UnitData frigateData = new UnitData(frigateScore, frigateHp, frigateDamage, frigateSpeed, capabilities); // First element = index for Registered Armor
 
         // Authoring Data
         frigateData.dataIndex[(int)Capability.Armor] = 0;
@@ -202,7 +231,7 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
             );
     }
 
-    public void ApplyDamage(int index, int version, int dmg)
+    public void ApplyDamage(in int index, in int version, in int dmg)
     {
         if (versions[index] != version)
         {
@@ -215,7 +244,12 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
 
         if (enemyHps[index] <= 0)
         {
+            explosionSound.Stop();
+            explosionSound.Play();
+            score += entityType.entityData.scoreValue;
+            scoreText.SetText("Score : {0}", score);
             EnemyECS.RemoveEntity(this, ref entityType, index);
+            // Explosion Visual
         }
     }
 
@@ -251,10 +285,21 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
     public void RemoveOutOfBound(ref EnemyECS.EntityType type, in int index)
     {
         var projInstance = ProjectileManager.instance;
-        if (projInstance.IsOutOfBond(entityGameObjects[index].transform.position, projInstance.horizontalLimit + 5, projInstance.verticalLimit + 5))
+        var horizontalLimit = projInstance.horizontalLimit;
+        var verticalLimit = projInstance.verticalLimit + 3;
+        var pos = entityGameObjects[index].transform.position;
+
+        // Horizontal OOB
+        if (pos.x > horizontalLimit || pos.x < -horizontalLimit)
         {
-            // Remove Player Life
             EnemyECS.RemoveEntity(this, ref type, index);
+        }
+
+        // Vertical OOB
+        if (pos.y < -verticalLimit)
+        {
+            EnemyECS.RemoveEntity(this, ref type, index);
+            Player.instance.TakeDamage(type.entityData.damage);
         }
     }
 
@@ -263,7 +308,7 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
         entityBody.transform.position += entityBody.transform.up * speed;
     }
 
-    static void OscilatingMovement(GameObject entityBody, float speed)
+    public static void OscilatingMovement(GameObject entityBody, float speed)
     {
         entityBody.transform.position += (entityBody.transform.right * (float)Math.Sin(Time.time) + entityBody.transform.up) * speed;
     }
@@ -323,8 +368,9 @@ public class EnemyManager : MonoBehaviour, ECS<UnitData, EnemyManager>.IECSState
 // ENTITY TYPE > DATA DEFINITION
 public readonly struct UnitData
 {
-    public UnitData(int hp, int damage, float speed, int capabilityMask = 0)
+    public UnitData(int scoreValue, int hp, int damage, float speed, int capabilityMask = 0)
     {
+        this.scoreValue = scoreValue;
         this.hp = hp;
         this.damage = damage;
         this.speed = speed;
@@ -335,6 +381,7 @@ public readonly struct UnitData
     }
 
     // DEFAULT STATS
+    public readonly int scoreValue;
     // public readonly int maxHp;
     public readonly int hp;
     public readonly int damage;

@@ -6,6 +6,7 @@ public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
     public delegate void EntityLogic(ref EntityType type, in int index);
     public delegate void RemoveLogic(in EntityType type, in int index, in int lastIndex);
 
+    // TODO : EntityType = Interface -> ECS Doesnt care about entityData + Optimization
     public struct EntityType
     {
         public EntityType(int type, int maxEntities, GameObject prefab, TData entityData,
@@ -38,6 +39,7 @@ public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
     public interface IECSState
     {
         // ECS Core data
+        // TODO : Subscribe to systems per Entity Type
         public EntityType[] entityTypes { get; set; }
         public GameObject[] entityGameObjects { get; set; }
         public int[] versions { get; set; }

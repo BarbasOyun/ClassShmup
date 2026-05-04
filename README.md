@@ -36,6 +36,7 @@ State of AI Games :<br>
 
 ## 2] To go Further
 
+-Use OOP to define the enemy types behavior<br>
 -Add Weapons / Bonus<br>
 -Pause Menu<br>
 -Main Menu<br>

@@ -1,16 +1,27 @@
 using System;
+using System.Diagnostics;
+using System.Collections;
+
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
-using System.Collections;
 using Debug = UnityEngine.Debug;
-using System.Diagnostics;
+using Random = UnityEngine.Random;
 
 public class Player : MonoBehaviour
 {
+    public static Player instance;
+
     [Header("REFERENCES")]
     public SpriteRenderer spriteRenderer;
     public Slider hpSlider;
+
+    [Header("BACKGROUND")]
+    public GameObject[] backgrounds;
+    int currentBg = 0;
+    public Vector3 bgResetPos = new Vector3(0, 37.5f, 0);
+    public float bgSpeed = 0.1f;
+    float baseBgSpeed;
 
     [Header("STATS")]
     [SerializeField]
@@ -19,25 +30,40 @@ public class Player : MonoBehaviour
     private int hp = 100;
 
     [Header("MOVEMENTS")]
-    public float speed = 0.1f;
+    public float speed = 0.3f;
+    public float baseSpeed;
     public Vector3 moveInput;
-    public GameObject[] mapLimits;
 
     float horizontalLimit;
     float verticalLimit;
 
     [Header("SHOOT")]
+    public AudioSource laserSound;
     public GameObject shootPos;
-    public float shootDelay = 0.25f;
+    public float shootDelay;
+    public float shootDelayMin = 0.05f;
+    public float baseShootDelayMin;
+    public float shootDelayMax = 0.15f;
+    public float baseShootDelayMax;
     private float lastShoot;
-    //List<GameObject> lasers;
 
     private Vector2 shootDirection1, shootDirection2, shootDirection3, shootDirection4;
 
     void Awake()
     {
+        if (instance == null)
+        {
+            instance = this;
+            // DontDestroyOnLoad(gameObject);
+        }
+
         UpdateMovementLimits();
         UpdateShootDirection();
+
+        baseBgSpeed = bgSpeed;
+        baseSpeed = speed;
+        baseShootDelayMin = shootDelayMin;
+        baseShootDelayMax = shootDelayMax;
     }
 
     void Start()
@@ -45,54 +71,70 @@ public class Player : MonoBehaviour
 
     }
 
-    // 50 Hz -> Movements
     void FixedUpdate()
     {
         Movements();
+
+        foreach (GameObject bg in backgrounds)
+        {
+            bg.transform.Translate(Vector2.down * bgSpeed);
+        }
+
+        if (backgrounds[currentBg].transform.position.y <= 7)
+        {
+            currentBg++;
+
+            if (currentBg >= backgrounds.Length)
+            {
+                currentBg = 0;
+            }
+
+            backgrounds[currentBg].transform.position = bgResetPos;
+        }
     }
 
     void Update()
     {
-        // Movements();
-        // LaserMovements();
-
         MovementsInputs();
         Shoot();
     }
 
     void MovementsInputs()
     {
-        if (Keyboard.current.wKey.isPressed) // Old Input system: Input.GetKeyDown(KeyCode.Z)
+        if (Keyboard.current.wKey.isPressed)
         {
             // print("Forward");
-            // transform.position += gameObject.transform.up * speed;
-            moveInput = new Vector3(moveInput.x, 1);
+            moveInput.y = 1;
         }
         else if (Keyboard.current.sKey.isPressed)
         {
             // print("Backward");
-            // transform.position -= gameObject.transform.up * speed;
-            moveInput = new Vector3(moveInput.x, -1);
+            moveInput.y = -1;
         }
 
         if (Keyboard.current.aKey.isPressed)
         {
             // print("Left");
-            // transform.position -= gameObject.transform.right * speed;
-            // transform.position += Vector3.Cross(gameObject.transform.forward, Vector3.up) * speed;
-            moveInput = new Vector3(-1, moveInput.y);
+            moveInput.x = -1;
         }
         else if (Keyboard.current.dKey.isPressed)
         {
             // print("Right");
-            // transform.position += gameObject.transform.right * speed;
-            // transform.position -= Vector3.Cross(gameObject.transform.forward, Vector3.up) * speed;
-            moveInput = new Vector3(1, moveInput.y);
+            moveInput.x = 1;
         }
     }
 
     void Movements()
     {
+        // Map Limits
+        if (transform.position.x < -horizontalLimit) moveInput.x = Math.Max(moveInput.x, 0);
+
+        if (transform.position.x > horizontalLimit) moveInput.x = Math.Min(moveInput.x, 0);
+
+        if (transform.position.y < -verticalLimit) moveInput.y = Math.Max(moveInput.y, 0);
+
+        if (transform.position.y > verticalLimit) moveInput.y = Math.Min(moveInput.y, 0);
+
         // Normalize Velocity
         if (moveInput.magnitude > 1)
         {
@@ -100,18 +142,8 @@ public class Player : MonoBehaviour
         }
 
         // Apply Velocity
-        transform.position += moveInput * speed; // * Time.deltaTime;
+        transform.position += moveInput * speed;
         moveInput = Vector3.zero;
-
-        // Map Limits -> Camera
-        float clampX = Math.Clamp(transform.position.x, -horizontalLimit, horizontalLimit);
-        float clampY = Math.Clamp(transform.position.y, -verticalLimit, verticalLimit);
-        transform.position = new Vector3(clampX, clampY, transform.position.z);
-
-        // Map Limit -> Points
-        // float clampX = Math.Clamp(transform.position.x, mapLimits[0].transform.position.x, mapLimits[1].transform.position.x);
-        // float clampY = Math.Clamp(transform.position.y, mapLimits[2].transform.position.y, mapLimits[3].transform.position.y);
-        // transform.position = new Vector3(clampX, clampY, transform.position.z);
     }
 
     // When Changing Camera orthographicSize or Player SpriteSize
@@ -132,24 +164,18 @@ public class Player : MonoBehaviour
 
     void Shoot()
     {
-        if ((Keyboard.current.spaceKey.isPressed || Mouse.current.leftButton.isPressed) && Time.fixedTime > lastShoot + shootDelay)
+        if ((Keyboard.current.spaceKey.isPressed || Mouse.current.leftButton.isPressed) && Time.time > lastShoot + shootDelay)
         {
             ShootLaser(transform.up); // Forward
-            ShootLaser(shootDirection1); // Left? 36°
+            ShootLaser(shootDirection1); // Left 36°
             ShootLaser(shootDirection2); // Left 58.5°
             ShootLaser(shootDirection3); // Mirror
             ShootLaser(shootDirection4);
 
-            lastShoot = Time.fixedTime;
-
-            // Destroy(newLaser, 2);
-
-            // lasers.Add(newLaser);
-
-            // StartCoroutine(RunAfterDelay(2, () =>
-            // {
-            // RemoveLaser();
-            // }));
+            lastShoot = Time.time;
+            shootDelay = Random.Range(shootDelayMin, shootDelayMax);
+            laserSound.Stop();
+            laserSound.Play();
         }
     }
 
@@ -168,7 +194,31 @@ public class Player : MonoBehaviour
     public void TakeDamage(int damage)
     {
         hp -= damage;
-        hpSlider.value = hp / maxHp;
+
+        float percentHp = hp / (float)maxHp;
+        float missingPercentHp = 1 + 1 - percentHp;
+        hpSlider.value = percentHp;
+
+        // Debug.Log($"Player Take Damage = {damage} -> HP = {hp} -> Slider Value = {percentHp}");
+
+        if (hp <= 0)
+        {
+            Debug.Log("Game over");
+            return;
+        }
+
+        bgSpeed = baseBgSpeed * missingPercentHp;
+        speed = baseSpeed * missingPercentHp;
+        shootDelayMin = baseShootDelayMin * (percentHp + 0.15f);
+        shootDelayMax = baseShootDelayMax * (percentHp + 0.15f);
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.TryGetComponent<EnemyEntity>(out var entity))
+        {
+            EnemyManager.instance.ApplyDamage(entity.index, entity.version, 50);
+        }
     }
 
     // TODO : Move to Gears
