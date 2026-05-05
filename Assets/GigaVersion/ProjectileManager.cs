@@ -1,13 +1,12 @@
 using System.Linq;
 using UnityEngine;
 
-public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileManager>.IECSState
+public class ProjectileECS : ECS<ProjectileManager, ProjectileData> { }
+
+public class ProjectileManager : MonoBehaviour, ProjectileECS.IECSState
 {
     // TODO : Use Service Locator
     public static ProjectileManager instance;
-
-    public float verticalLimit;
-    public float horizontalLimit;
 
     // DATA SOURCE
     [Header("Player Laser")]
@@ -16,11 +15,9 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
     public float laserSpeed = 0.3f;
 
     // ECS Implementation
-    public class ProjectileECS : ECS<ProjectileData, ProjectileManager> { }
-
     public enum ProjectileType { Laser, _Count }
 
-    public ProjectileECS.EntityType[] entityTypes { get; set; }
+    public ProjectileData[] entityTypes { get; set; }
     public GameObject[] entityGameObjects { get; set; }
     public int[] versions { get; set; }
     // Custom fields
@@ -33,6 +30,8 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
         {
             instance = this;
             DontDestroyOnLoad(gameObject);
+        }else {
+            Destroy(gameObject);
         }
 
         InitEntityType();
@@ -45,9 +44,6 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
 
     void FixedUpdate()
     {
-        verticalLimit = Camera.main.orthographicSize;
-        horizontalLimit = Camera.main.orthographicSize * Screen.width / Screen.height;
-
         ProjectileECS.EntitiesUpdateLogic(this);
     }
 
@@ -58,7 +54,7 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
 
     public GameObject SpawnProjectile(ProjectileType type, Vector2 direction)
     {
-        // ProjectileECS.EntityType entityType = entityTypes[(int)type];
+        // ProjectileData entityType = entityTypes[(int)type];
         // int spawnIndex = entityType.startIndex + entityType.activeCount;
         // projectileDirections[spawnIndex] = direction;
 
@@ -94,28 +90,27 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
         ProjectileECS.Init(this, gameObject);
     }
 
-    ProjectileECS.EntityType LaserType(int maxLaser)
+    ProjectileData LaserType(int maxLaser)
     {
-        void LaserUpdate(ref ProjectileECS.EntityType type, in int index)
+        void LaserUpdate(ref ProjectileData type, in int index)
         {
             RemoveOutOfBound(ref type, index);
             ProjectileMovements(in type, in index);
         }
 
-        ProjectileData laserData = new ProjectileData(laserDamage, laserSpeed);
-
-        return new ProjectileECS.EntityType(
+        return new ProjectileData(
             (int)ProjectileType.Laser,
             maxLaser,
             laserPrefab,
-            laserData,
             SpawnLogic,
             RemoveLogic,
-            LaserUpdate
+            LaserUpdate,
+            laserDamage,
+            laserSpeed
         );
     }
 
-    public void SpawnLogic(ref ProjectileECS.EntityType type, in int index)
+    public void SpawnLogic(ref ProjectileData type, in int index)
     {
         // var entityData = type.entityData;
         projectileDirections[index] = nextDirection;
@@ -123,9 +118,8 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
         // Capability
     }
 
-    public void RemoveLogic(in ProjectileECS.EntityType type, in int index, in int originalIndex)
+    public void RemoveLogic(in ProjectileData type, in int index, in int originalIndex)
     {
-        var entityData = type.entityData;
         projectileDirections[index] = projectileDirections[originalIndex];
 
         // Capability
@@ -139,16 +133,16 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
             return;
         }
 
-        ref ProjectileECS.EntityType entityType = ref ProjectileECS.IndexToEntityType(this, projectilIndex);
+        ref ProjectileData entityType = ref ProjectileECS.IndexToEntityType(this, projectilIndex);
 
         // TODO : Projectile Type Effect
         EnemyManager.instance.ApplyDamage(entityIndex, entityVersion, laserDamage);
         ProjectileECS.RemoveEntity(this, ref entityType, projectilIndex);
     }
 
-    public void RemoveOutOfBound(ref ProjectileECS.EntityType type, in int index)
+    public void RemoveOutOfBound(ref ProjectileData type, in int index)
     {
-        if (IsOutOfBond(entityGameObjects[index].transform.position, horizontalLimit, verticalLimit))
+        if (IsOutOfBond(entityGameObjects[index].transform.position, EnemyManager.instance.horizontalLimit, EnemyManager.instance.verticalLimit))
         {
             ProjectileECS.RemoveEntity(this, ref type, index);
         }
@@ -159,17 +153,32 @@ public class ProjectileManager : MonoBehaviour, ECS<ProjectileData, ProjectileMa
         gameObject.transform.position += (Vector3)(direction * speed);
     }
 
-    public void ProjectileMovements(in ProjectileECS.EntityType type, in int index)
+    public void ProjectileMovements(in ProjectileData type, in int index)
     {
-        DirectionalMovement(entityGameObjects[index], projectileDirections[index], type.entityData.speed);
+        DirectionalMovement(entityGameObjects[index], projectileDirections[index], type.speed);
+    }
+
+    public void RemoveAll()
+    {
+        ProjectileECS.RemoveAll(this);
     }
 }
 
 // PROJECTILE TYPE > Data Definition
-public readonly struct ProjectileData
+public struct ProjectileData : ProjectileECS.IEntityType
 {
-    public ProjectileData(int damage, float speed) // int capabilityMask = 0
+    public ProjectileData(int type, int maxEntities, GameObject prefab, ProjectileECS.EntityLogic spawnLogic, ProjectileECS.RemoveLogic removeLogic, ProjectileECS.EntityLogic updateLogic,
+        int damage, float speed) // int capabilityMask = 0
     {
+        this.type = type;
+        startIndex = 0;
+        this.maxEntities = maxEntities;
+        activeCount = 0;
+        this.prefab = prefab;
+        this.spawnLogic = spawnLogic;
+        this.removeLogic = removeLogic;
+        this.updateLogic = updateLogic;
+
         this.damage = damage;
         this.speed = speed;
 
@@ -177,6 +186,16 @@ public readonly struct ProjectileData
         // dataIndex = new int[(int)EnemyManager.Capability._Count]; // TODO : Set size = Last capacity index
         // dataOffsets = new int[(int)EnemyManager.Capability._Count];
     }
+
+     // IEntityType Implementation
+    public int type { get; }
+    public int startIndex { get; set; }
+    public int maxEntities { get; }
+    public int activeCount { get; set; }
+    public GameObject prefab { get; }
+    public ProjectileECS.EntityLogic spawnLogic { get; }
+    public ProjectileECS.RemoveLogic removeLogic { get; }
+    public ProjectileECS.EntityLogic updateLogic { get; }
 
     // DEFAULT STATS
     public readonly int damage;

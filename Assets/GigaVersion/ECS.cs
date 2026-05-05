@@ -1,53 +1,37 @@
 using UnityEngine;
 
 // Rosaure ECS
-public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
+public class ECS<TState, TData> where TState : ECS<TState, TData>.IECSState where TData : ECS<TState, TData>.IEntityType
 {
-    public delegate void EntityLogic(ref EntityType type, in int index);
-    public delegate void RemoveLogic(in EntityType type, in int index, in int lastIndex);
-
-    // TODO : EntityType = Interface -> ECS Doesnt care about entityData + Optimization
-    public struct EntityType
-    {
-        public EntityType(int type, int maxEntities, GameObject prefab, TData entityData,
-        EntityLogic spawnLogic, RemoveLogic removeLogic, EntityLogic updateLogic)
-        {
-            this.type = type;
-            startIndex = 0;
-            this.maxEntities = maxEntities;
-            activeCount = 0;
-            this.prefab = prefab;
-            this.entityData = entityData;
-            this.spawnLogic = spawnLogic;
-            this.removeLogic = removeLogic;
-            this.updateLogic = updateLogic;
-        }
-
-        public int type;
-        public int startIndex;
-        public int maxEntities;
-        public int activeCount;
-        public GameObject prefab;
-        public TData entityData;
-        public EntityLogic spawnLogic;
-        public RemoveLogic removeLogic;
-        public EntityLogic updateLogic;
-
-        public override string ToString() => $"(Type = {type}, StartIndex = {startIndex}, MaxEntities = {maxEntities}, ActiveCount = {activeCount})";
-    }
-
     public interface IECSState
     {
         // ECS Core data
         // TODO : Subscribe to systems per Entity Type
-        public EntityType[] entityTypes { get; set; }
+        public TData[] entityTypes { get; set; }
         public GameObject[] entityGameObjects { get; set; }
         public int[] versions { get; set; }
+    }
+
+    public delegate void EntityLogic(ref TData type, in int index);
+    public delegate void RemoveLogic(in TData type, in int index, in int lastIndex);
+
+    public interface IEntityType
+    {
+        public int type { get; }
+        public int startIndex { get; set; }
+        public int maxEntities { get; }
+        public int activeCount { get; set; }
+        // TODO : use GPU Instancing -> TryGetComponent has delay
+        public GameObject prefab { get; }
+        public EntityLogic spawnLogic { get; }
+        public RemoveLogic removeLogic { get; }
+        public EntityLogic updateLogic { get; }
     }
 
     public static void Init(TState state, in GameObject holder)
     {
         var entityTypes = state.entityTypes;
+        var entityGameObjects = state.entityGameObjects;
 
         // Instantiate/Setup GameObjects
         int totalEntityCount = 0;
@@ -66,7 +50,7 @@ public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
                     entity.index = index;
                 }
 
-                state.entityGameObjects[index] = spawnedPrefab;
+                entityGameObjects[index] = spawnedPrefab;
             }
 
             entityTypes[i].startIndex = totalEntityCount;
@@ -76,7 +60,7 @@ public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
 
     public static GameObject SpawnEntityType(TState state, in int type)
     {
-        ref EntityType entityType = ref state.entityTypes[type];
+        ref TData entityType = ref state.entityTypes[type];
 
         if (entityType.activeCount >= entityType.maxEntities)
         {
@@ -105,7 +89,7 @@ public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
         return spawnedEnemy;
     }
 
-    public static void RemoveEntity(TState state, ref EntityType entityType, int indexToRemove) // ref
+    public static void RemoveEntity(TState state, ref TData entityType, int indexToRemove)
     {
         GameObject[] entityGameObjects = state.entityGameObjects;
 
@@ -144,11 +128,32 @@ public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
         }
     }
 
+    public static void RemoveAll(TState state)
+    {
+        GameObject[] entityGameObjects = state.entityGameObjects;
+        var versions = state.versions;
+
+        for (int i = 0; i < state.entityTypes.Length; i++)
+        {
+            ref var entityType = ref state.entityTypes[i];
+            int typeEndIndex = entityType.startIndex + entityType.activeCount;
+
+            for (int j = entityType.startIndex; j < typeEndIndex; j++)
+            {
+                entityGameObjects[j].SetActive(false);
+                versions[j]++;
+            }
+
+            entityType.activeCount = 0;
+        }
+    }
+
     public static void EntitiesUpdateLogic(TState state)
     {
         for (int i = 0; i < state.entityTypes.Length; i++)
         {
             ref var entityType = ref state.entityTypes[i];
+
             for (int j = entityType.startIndex; j < entityType.startIndex + entityType.activeCount; j++)
             {
                 entityType.updateLogic(ref entityType, j);
@@ -157,12 +162,12 @@ public class ECS<TData, TState> where TState : ECS<TData, TState>.IECSState
     }
 
     // UTILS
-    public static ref EntityType IndexToEntityType(in TState state, int index)
+    public static ref TData IndexToEntityType(in TState state, int index)
     {
         var entityTypes = state.entityTypes;
 
         int typeIndex = 0;
-        EntityType currentType = entityTypes[typeIndex];
+        TData currentType = entityTypes[typeIndex];
 
         while (index < currentType.startIndex || currentType.startIndex + currentType.maxEntities - 1 < index)
         {

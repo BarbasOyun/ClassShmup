@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using Debug = UnityEngine.Debug;
 using Random = UnityEngine.Random;
+using UnityEngine.SceneManagement;
 
 public class Player : MonoBehaviour
 {
@@ -15,6 +16,8 @@ public class Player : MonoBehaviour
     [Header("REFERENCES")]
     public SpriteRenderer spriteRenderer;
     public Slider hpSlider;
+    public GameObject gameOver;
+    public Button gameOverButton;
 
     [Header("BACKGROUND")]
     public GameObject[] backgrounds;
@@ -68,7 +71,7 @@ public class Player : MonoBehaviour
 
     void Start()
     {
-
+        gameOverButton.onClick.AddListener(LoadMainMenu);
     }
 
     void FixedUpdate()
@@ -97,6 +100,14 @@ public class Player : MonoBehaviour
     {
         MovementsInputs();
         Shoot();
+    }
+
+    void LoadMainMenu()
+    {
+        ProjectileManager.instance.RemoveAll();
+        EnemyManager.instance.RemoveAll();
+        EnemyManager.instance.ResetIncrement();
+        SceneManager.LoadScene("GigaMenu");
     }
 
     void MovementsInputs()
@@ -203,14 +214,22 @@ public class Player : MonoBehaviour
 
         if (hp <= 0)
         {
-            Debug.Log("Game over");
+            Death();
             return;
         }
 
+        // Increase Stats
         bgSpeed = baseBgSpeed * missingPercentHp;
         speed = baseSpeed * missingPercentHp;
         shootDelayMin = baseShootDelayMin * (percentHp + 0.15f);
         shootDelayMax = baseShootDelayMax * (percentHp + 0.15f);
+    }
+
+    void Death()
+    {
+        // Debug.Log("Game over");
+        gameOver?.SetActive(true);
+        gameObject.SetActive(false);
     }
 
     void OnTriggerEnter2D(Collider2D other)
