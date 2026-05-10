@@ -1,14 +1,16 @@
 using System;
 using System.Collections.Generic;
-
+using Unity.VectorGraphics;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class CPlayer : MonoBehaviour
 {
+    public static CPlayer instance;
+
     [Header("REFERENCES")]
-    public SpriteRenderer spriteRenderer;
     public Slider hpSlider;
 
     [Header("STATS")]
@@ -18,9 +20,8 @@ public class CPlayer : MonoBehaviour
     private int hp = 100;
 
     [Header("MOVEMENTS")]
-    public float speed = 0.1f;
-    public Vector3 moveInput;
-    public GameObject[] mapLimits;
+    public float speed = 3f;
+    Vector3 moveInput;
 
     // float horizontalLimit;
     // float verticalLimit;
@@ -30,15 +31,20 @@ public class CPlayer : MonoBehaviour
     public GameObject shootPos;
     public float shootDelay = 0.25f;
     public int laserDamage = 10;
-    public float laserSpeed = 0.3f;
+    public float laserSpeed = 10f;
     private float lastShoot;
-    List<GameObject> lasers;
+    List<GameObject> lasers = new List<GameObject>();
 
     // Called before Start()
-    // void Awake()
-    // {
-    //     UpdateMovementLimits();
-    // }
+    void Awake()
+    {
+        if (instance == null)
+            instance = this;
+        else
+            Destroy(gameObject);
+        
+        // UpdateMovementLimits();
+    }
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -113,9 +119,12 @@ public class CPlayer : MonoBehaviour
         // transform.position = new Vector3(clampX, clampY, transform.position.z);
 
         // Map Limit -> Points
-        float clampX = Math.Clamp(transform.position.x, mapLimits[0].transform.position.x, mapLimits[1].transform.position.x);
-        float clampY = Math.Clamp(transform.position.y, mapLimits[2].transform.position.y, mapLimits[3].transform.position.y);
-        transform.position = new Vector3(clampX, clampY, transform.position.z);
+        if (!EnemySpawner.instance.IsInBounds(transform.position))
+        {
+            float clampX = Math.Clamp(transform.position.x, EnemySpawner.instance.mapLimits[0].transform.position.x, EnemySpawner.instance.mapLimits[1].transform.position.x);
+            float clampY = Math.Clamp(transform.position.y, EnemySpawner.instance.mapLimits[2].transform.position.y, EnemySpawner.instance.mapLimits[3].transform.position.y);
+            transform.position = new Vector3(clampX, clampY, transform.position.z);
+        }
     }
 
     void Shoot()
@@ -123,8 +132,8 @@ public class CPlayer : MonoBehaviour
         if ((Keyboard.current.spaceKey.isPressed || Mouse.current.leftButton.isPressed) && Time.fixedTime > lastShoot + shootDelay)
         {
             GameObject spawnedLaser = Instantiate(laserPrefab);
-            Destroy(spawnedLaser, 2);
             lasers.Add(spawnedLaser);
+            spawnedLaser.transform.position = shootPos.transform.position;
 
             lastShoot = Time.fixedTime;
         }
@@ -132,20 +141,33 @@ public class CPlayer : MonoBehaviour
 
     void LaserMovements()
     {
-        foreach (GameObject laser in lasers)
+        for (int i = lasers.Count - 1; i >= 0; i--)
         {
+            var laser = lasers[i];
             laser.transform.position += laser.transform.up * laserSpeed * Time.deltaTime;
+
+            if (EnemySpawner.instance.IsOutOfBounds(laser.transform.position))
+            {
+                RemoveLaser(laser);
+            }
         }
+    }
+
+    public void RemoveLaser(GameObject laser)
+    {
+        lasers.Remove(laser);
+        Destroy(laser);
     }
 
     public void TakeDamage(int damage)
     {
         hp -= damage;
-        hpSlider.value = hp / maxHp;
+        hpSlider.value = hp / (float)maxHp;
 
         if (hp <= 0)
         {
             Debug.Log("Game Over");
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
     }
 }

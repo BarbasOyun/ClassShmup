@@ -5,7 +5,6 @@ public class ProjectileECS : ECS<ProjectileManager, ProjectileData> { }
 
 public class ProjectileManager : MonoBehaviour, ProjectileECS.IECSState
 {
-    // TODO : Use Service Locator
     public static ProjectileManager instance;
 
     // DATA SOURCE

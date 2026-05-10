@@ -1,7 +1,8 @@
 # Rosaure ECS
 
--Custom ECS in C# for Unity<br>
--Still WIP<br>
+-Custom ECS written in C# for Unity<br>
+-WIP<br>
+-Next Performance Update : Use GPU Instancing + Custom physic to replace Unity's GameObjects<br>
 
 ## What's an ECS?
 
@@ -18,10 +19,10 @@
 ## Features
 
 -Base ECS that can be implemented by other Systems<br>
--Sub Array indexes<br>
--Define Entity Types / System implementing Rosaure (e.g. Enemy1, Enemy2)<br>
--Define custom data / Entity Type<br>
--Define custom behaviors(logic) / Entity Type<br>
+-Sub Array<br>
+-Define Entity Types per System implementing Rosaure (e.g. Enemy1, Enemy2)<br>
+-Custom data per Entity Type<br>
+-Custom behaviors/logic per Entity Type<br>
 
 ## Battleship Vs Space Armada
 

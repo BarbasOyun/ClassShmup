@@ -2,12 +2,12 @@
 
 ## 1] Resources
 
--This repo can be used as a reference for the project<br>
+-This repo's code base can be used as a reference for the project<br>
 -[Unity Website](https://unity.com/fr)<br>
 -[Unity Manual](https://docs.unity3d.com/Manual/index.html)<br>
 -[C# Naming Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/identifier-names)<br>
 -[YT : 3 Laws of writing readable code](https://www.youtube.com/watch?v=-AzSRHiV9Cc)<br>
-State of AI Games :<br>
+State of AI Games/Generation :<br>
 -[Racing Game](https://www.reddit.com/r/aigamedev/comments/1smm7hl/i_had_claude_code_build_me_a_3d_formula1_racing/)<br>
 -[Portal Game](https://www.reddit.com/r/aigamedev/comments/1sspoe4/this_portal_clone_is_created_with_10_prompts/)
 
@@ -36,7 +36,7 @@ State of AI Games :<br>
 
 ## 2] To go Further
 
--Use OOP to define the enemy types behavior<br>
+-Use OOP (Inheritence) to define the enemy types Data & Behaviors<br>
 -Add Weapons / Bonus<br>
 -Pause Menu<br>
 -Main Menu<br>
@@ -65,7 +65,7 @@ State of AI Games :<br>
 -function<br>
 -Applied Maths in GameDev (Velocity, sin)<br>
 
-### Steps
+### Road Map
 
 1] Player Movement -> Inputs + Translation<br>
 2] Player Shoot -> Prefab<br>
@@ -74,6 +74,15 @@ State of AI Games :<br>
 5] Sin() Movement Enemy2<br>
 6] Add Sounds<br>
 7] Build Project<br>
+
+### SX (Student Experience)
+
+-Present an incomplet version of the game at the start of the course<br>
+-> Define goal, incomplete version motivate completion like this :<br>
+![IncompletePuzzleImage](https://t3.ftcdn.net/jpg/00/49/69/66/360_F_49696671_C4x2IxqNOetcjF3o1a6zyaLG8sqGtcTw.jpg)<br>
+-A road map is displayed during the whole course as a visual and spatial reference of the progress<br>
+(Inspired by DR.Stone's road maps)<br>
+![RoadMapImage](Assets/ClassShmupRoadMap.png)<br>
 
 ### Default/Giga mode
 

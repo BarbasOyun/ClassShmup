@@ -8,7 +8,6 @@ public class EnemyECS : ECS<EnemyManager, UnitData> { }
 
 public class EnemyManager : MonoBehaviour, EnemyECS.IECSState
 {
-    // TODO : Use Service Locator
     // TODO : use partial class
     // TODO : Custom Physics : Velocity, Collision Detection, Solver
     public static EnemyManager instance;

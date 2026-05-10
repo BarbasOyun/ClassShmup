@@ -3,7 +3,6 @@ using UnityEngine;
 
 public class AudioManager : MonoBehaviour
 {
-    // TODO : Use Service Locator
     public static AudioManager instance;
     public Sound[] globalSounds;
 
