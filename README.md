@@ -1,5 +1,7 @@
 # Unity Intro Class : Shmup
 
+[Incomplete Web version](https://barbasoyun.github.io/ClassShmup/)<br>
+
 ## 1] Resources
 
 -This repo's code base can be used as a reference for the project<br>
