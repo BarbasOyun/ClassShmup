@@ -104,6 +104,7 @@ public class Player : MonoBehaviour
 
     void LoadMainMenu()
     {
+        EnemyManager.instance.score = 0;
         ProjectileManager.instance.RemoveAll();
         EnemyManager.instance.RemoveAll();
         EnemyManager.instance.ResetIncrement();

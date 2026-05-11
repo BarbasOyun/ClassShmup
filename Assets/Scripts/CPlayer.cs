@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Unity.VectorGraphics;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -141,14 +140,31 @@ public class CPlayer : MonoBehaviour
 
     void LaserMovements()
     {
-        for (int i = lasers.Count - 1; i >= 0; i--)
+        // for (int i = lasers.Count - 1; i >= 0; i--)
+        // {
+        //     var laser = lasers[i];
+        //     laser.transform.position += laser.transform.up * laserSpeed * Time.deltaTime;
+
+        //     if (EnemySpawner.instance.IsOutOfBounds(laser.transform.position))
+        //     {
+        //         RemoveLaser(laser);
+        //     }
+        // }
+
+        int index = 0;
+
+        while(index < lasers.Count)
         {
-            var laser = lasers[i];
+            var laser = lasers[index];
             laser.transform.position += laser.transform.up * laserSpeed * Time.deltaTime;
 
             if (EnemySpawner.instance.IsOutOfBounds(laser.transform.position))
             {
                 RemoveLaser(laser);
+            }
+            else
+            {
+                index++;
             }
         }
     }

@@ -7,28 +7,35 @@
 -[Unity Manual](https://docs.unity3d.com/Manual/index.html)<br>
 -[C# Naming Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/identifier-names)<br>
 -[YT : 3 Laws of writing readable code](https://www.youtube.com/watch?v=-AzSRHiV9Cc)<br>
+
 State of AI Games/Generation :<br>
 -[Racing Game](https://www.reddit.com/r/aigamedev/comments/1smm7hl/i_had_claude_code_build_me_a_3d_formula1_racing/)<br>
 -[Portal Game](https://www.reddit.com/r/aigamedev/comments/1sspoe4/this_portal_clone_is_created_with_10_prompts/)
 
 ### Assets Used
 
--[Itch Player](https://foozlecc.itch.io/void-main-ship)<br>
--[Itch Enemies](https://foozlecc.itch.io/void-fleet-pack-1)<br>
--[Itch Background](https://screamingbrainstudios.itch.io/seamless-space-backgrounds)<br>
--[Freesound Laser Sound](https://freesound.org/people/alphatrooper18/sounds/362421/)<br>
--[Itch Music](https://alkakrab.itch.io/free-sci-fi-music-2)<br>
--[OGA Explosion 02](https://opengameart.org/content/explosion-8)<br>
+Itch.io :<br>
+-[Player](https://foozlecc.itch.io/void-main-ship)<br>
+-[Enemies](https://foozlecc.itch.io/void-fleet-pack-1)<br>
+-[Background](https://screamingbrainstudios.itch.io/seamless-space-backgrounds)<br>
+-[Music](https://alkakrab.itch.io/free-sci-fi-music-2)<br>
+
+OpenGameArt :<br>
+-[Explosion](https://opengameart.org/content/explosion-8)<br>
+
+Freesound :<br>
+-[Laser Sound](https://freesound.org/people/alphatrooper18/sounds/362421/)<br>
 
 ### Find More Assets
 
 -[CraftPix](https://craftpix.net/)<br>
 -[OpenGameArt](https://opengameart.org/)<br>
 -[Itch.io Game Assets](https://itch.io/game-assets)<br>
+-[Freedound](https://freesound.org/)<br>
 
 ### Useful Shortcuts
 
--Ctrl + C -> V<br>
+-Ctrl + C -> V = Copy, Paste<br>
 -Ctrl + X = Cut<br>
 -Ctrl = Block Mode<br>
 -Shift = Select Mode<br>
@@ -36,14 +43,17 @@ State of AI Games/Generation :<br>
 
 ## 2] To go Further
 
--Use OOP (Inheritence) to define the enemy types Data & Behaviors<br>
+Game :<br>
+-Use Inheritence (Object Oriented Programming = OOP) to better define the enemy types<br>
 -Add Weapons / Bonus<br>
 -Pause Menu<br>
--Main Menu<br>
+-Main Menu (Scene loader)<br>
+
+Publish :<br>
 -Upload on GitHub<br>
--Create Itch.io Account<br>
 -Build WebGl Version<br>
--Publish Playable Version on Itch.io<br>
+-[Publish on Github Pages](https://www.youtube.com/watch?v=4jvGgn4b1V8)<br>
+-[Publish Playable Version on Itch.io](https://www.youtube.com/watch?v=8iApGVX--B0)<br>
 
 -[Official Unity .gitignore](https://github.com/github/gitignore/blob/main/Unity.gitignore)<br>
 
@@ -51,8 +61,7 @@ State of AI Games/Generation :<br>
 
 ### Design Goals
 
--Discover Game Dev<br>
--Discover Basic Programming with Visual Feedbacks (Video Game)<br>
+-Discover Basic (Game) Programming with Visual Feedbacks<br>
 -Access to Resources to go further<br>
 -Build a playable/shareable Game (Windows version)<br>
 
@@ -63,28 +72,32 @@ State of AI Games/Generation :<br>
 -array<br>
 -Loops (for, while)<br>
 -function<br>
--Applied Maths in GameDev (Velocity, sin)<br>
+-Applied Maths in Game Programming (Velocity, sin)<br>
 
 ### Road Map
 
-1] Player Movement -> Inputs + Translation<br>
-2] Player Shoot -> Prefab<br>
-3] Enemy Spawner + Straight Line Enemy -> Collision + rng<br>
-4] Moving Background<br>
-5] Sin() Movement Enemy2<br>
+Game Element -> Learning<br>
+1] Player Movement -> if, conditions, functions, array, Inputs, Translation, Velocity, DeltaTime<br>
+2] Player Shoot -> List, while loop, Prefab, Instantiation<br>
+3] Enemy Spawner -> RNG, for loop<br>
+4] Scout Enemy -> Collision<br>
+5] Frigate Enemy -> Sin() Movement / Applied Maths<br>
 6] Add Sounds<br>
-7] Build Project<br>
+7] Build Project (Windows)<br>
 
 ### SX (Student Experience)
 
--Present an incomplet version of the game at the start of the course<br>
--> Define goal, incomplete version motivate completion like this :<br>
+-The incomplete web version is presented at the beginning of the course<br>
+-> Define goal, incomplete versions motivate completion :<br>
+
 ![IncompletePuzzleImage](https://t3.ftcdn.net/jpg/00/49/69/66/360_F_49696671_C4x2IxqNOetcjF3o1a6zyaLG8sqGtcTw.jpg)<br>
+
 -A road map is displayed during the whole course as a visual and spatial reference of the progress<br>
 (Inspired by DR.Stone's road maps)<br>
+
 ![RoadMapImage](Assets/ClassShmupRoadMap.png)<br>
 
 ### Default/Giga mode
 
 -Default = Course version<br>
--Giga = Optimised version<br>
+-[Giga Version](https://github.com/BarbasOyun/Rosaure-ECS) = Optimised version<br>
